@@ -8,7 +8,7 @@ import (
 	"time"
 )
 
-// CookieEntry encapsulates a cookie with full RFC 6265 metadata for persistence.
+// CookieEntry 封装带有完整 RFC 6265 元数据的 Cookie，用于持久化存储与精准匹配。
 type CookieEntry struct {
 	Name           string    `json:"name"`
 	Value          string    `json:"value"`
@@ -25,7 +25,7 @@ type CookieEntry struct {
 	MaxAge         int       `json:"max_age,omitempty"`
 }
 
-// IsExpired reports whether the cookie is expired relative to `at`.
+// IsExpired 判断 Cookie 在指定时间点 at 是否已过期。
 func (e *CookieEntry) IsExpired(at time.Time) bool {
 	if !e.HasExpires {
 		return false
@@ -33,16 +33,13 @@ func (e *CookieEntry) IsExpired(at time.Time) bool {
 	return at.After(e.Expires) || at.Equal(e.Expires)
 }
 
-// Key returns the identity key for cookie matching (Name + Domain + Path + HostOnly).
+// Key 返回 RFC 6265 定义的 Cookie 唯一标识符：(Name, Domain, Path)。
+// 注意：依据 RFC 6265，Cookie 名称区分大小写，Domain 不区分大小写。
 func (e *CookieEntry) Key() string {
-	ho := "0"
-	if e.HostOnly {
-		ho = "1"
-	}
-	return strings.ToLower(e.Name) + "#" + strings.ToLower(e.Domain) + "#" + e.Path + "#" + ho
+	return e.Name + "#" + strings.ToLower(e.Domain) + "#" + e.Path
 }
 
-// ToHTTPCookie converts the entry into standard *http.Cookie.
+// ToHTTPCookie 将内部实体转换为 Go 标准库 *http.Cookie。
 func (e *CookieEntry) ToHTTPCookie() *http.Cookie {
 	c := &http.Cookie{
 		Name:     e.Name,
@@ -67,13 +64,13 @@ func (e *CookieEntry) ToHTTPCookie() *http.Cookie {
 	return c
 }
 
-// MatchURL checks if this cookie entry should be sent to the given URL at time `now`.
+// MatchURL 检查此 Cookie 实体在当前时刻 now 是否应当发送给目标 URL。
 func (e *CookieEntry) MatchURL(u *url.URL, now time.Time) bool {
 	if e.IsExpired(now) {
 		return false
 	}
 
-	// 1. Secure check
+	// 1. 安全标记检查 (Secure Flag)
 	if e.Secure {
 		scheme := strings.ToLower(u.Scheme)
 		if scheme != "https" && u.Hostname() != "localhost" && u.Hostname() != "127.0.0.1" {
@@ -81,13 +78,13 @@ func (e *CookieEntry) MatchURL(u *url.URL, now time.Time) bool {
 		}
 	}
 
-	// 2. Domain check
+	// 2. 域名匹配检查 (Domain Matching)
 	host := strings.ToLower(u.Hostname())
 	if !domainMatch(host, strings.ToLower(e.Domain), e.HostOnly) {
 		return false
 	}
 
-	// 3. Path check
+	// 3. 路径匹配检查 (Path Matching)
 	reqPath := u.Path
 	if reqPath == "" {
 		reqPath = "/"
@@ -99,7 +96,7 @@ func (e *CookieEntry) MatchURL(u *url.URL, now time.Time) bool {
 	return true
 }
 
-// domainMatch implements RFC 6265 section 5.1.3 domain matching.
+// domainMatch 实现 RFC 6265 5.1.3 节的域名匹配算法。
 func domainMatch(host, domain string, hostOnly bool) bool {
 	if host == domain {
 		return true
@@ -107,18 +104,18 @@ func domainMatch(host, domain string, hostOnly bool) bool {
 	if hostOnly {
 		return false
 	}
-	// IP addresses cannot domain-match subdomains
+	// IP 地址不能作为子域匹配
 	if net.ParseIP(host) != nil {
 		return false
 	}
-	// Must end with "." + domain
+	// 必须以 "." + domain 结尾
 	if strings.HasSuffix(host, "."+domain) {
 		return true
 	}
 	return false
 }
 
-// pathMatch implements RFC 6265 section 5.1.4 path matching.
+// pathMatch 实现 RFC 6265 5.1.4 节的路径匹配算法。
 func pathMatch(requestPath, cookiePath string) bool {
 	if requestPath == cookiePath {
 		return true
@@ -134,7 +131,7 @@ func pathMatch(requestPath, cookiePath string) bool {
 	return false
 }
 
-// defaultPath calculates default path per RFC 6265 section 5.1.4.
+// defaultPath 依据 RFC 6265 5.1.4 节计算默认路径。
 func defaultPath(uriPath string) string {
 	if uriPath == "" || uriPath[0] != '/' {
 		return "/"

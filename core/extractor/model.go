@@ -2,7 +2,7 @@ package extractor
 
 import "time"
 
-// MediaType identifies the primary nature of the extracted media.
+// MediaType 标识解析出的媒体主要类型。
 type MediaType string
 
 const (
@@ -11,22 +11,22 @@ const (
 	MediaTypeImage MediaType = "image"
 )
 
-// VideoStream describes an individual downloadable video stream track.
+// VideoStream 描述单个可下载的视频流轨道信息。
 type VideoStream struct {
-	ID           int      `json:"id"`            // Quality id (e.g. 116, 80, 64, 32, 16)
-	QualityLabel string   `json:"quality_label"` // Readable quality (e.g. "1080P60", "1080P", "720P", "480P")
+	ID           int      `json:"id"`            // 画质代码（例如 116, 80, 64, 32, 16）
+	QualityLabel string   `json:"quality_label"` // 可读画质标签（例如 "1080P60", "1080P", "720P", "480P"）
 	Width        int      `json:"width"`
 	Height       int      `json:"height"`
-	Codec        string   `json:"codec"` // e.g. "avc1.640028", "hev1.1.6.L120.90", "av01.0.08M.10"
+	Codec        string   `json:"codec"` // 编码格式（例如 "avc1.640028", "hev1.1.6.L120.90", "av01.0.08M.10"）
 	Bandwidth    int64    `json:"bandwidth"`
 	URL          string   `json:"url"`
 	BackupURLs   []string `json:"backup_urls,omitempty"`
 	NeedAuth     bool     `json:"need_auth"`
 }
 
-// AudioStream describes an individual downloadable audio stream track.
+// AudioStream 描述单个可下载的音频流轨道信息。
 type AudioStream struct {
-	ID         int      `json:"id"` // e.g. 30280 (192K), 30232 (132K), 30216 (64K)
+	ID         int      `json:"id"` // 音质代码（例如 30280 (192K), 30232 (132K), 30216 (64K)）
 	Quality    string   `json:"quality"`
 	Codec      string   `json:"codec"`
 	Bandwidth  int64    `json:"bandwidth"`
@@ -34,14 +34,14 @@ type AudioStream struct {
 	BackupURLs []string `json:"backup_urls,omitempty"`
 }
 
-// ImageItem describes a standalone image asset (e.g. for Lofter posts).
+// ImageItem 描述独立静态图片资源（例如 Lofter 图片博文图片项）。
 type ImageItem struct {
 	Index    int    `json:"index"`
 	URL      string `json:"url"`
 	Filename string `json:"filename,omitempty"`
 }
 
-// MediaInfo contains unified, structured information about extracted media from any supported site.
+// MediaInfo 统一且结构化地承载自各站点解析出的媒体资源元数据与流描述符。
 type MediaInfo struct {
 	SiteID        string        `json:"site_id"`
 	ID            string        `json:"id"`
@@ -58,8 +58,8 @@ type MediaInfo struct {
 	SourceURL     string        `json:"source_url"`
 }
 
-// ExtractOptions configures options for an extraction call.
+// ExtractOptions 配置解析调用的参数与认证要求。
 type ExtractOptions struct {
-	AccountID   string // Optional: account to use. If empty, anonymous mode is used.
-	RequireAuth bool   // If true, fails with ErrCredentialExpired rather than falling back to anonymous
+	AccountID   string // 可选：指定要使用的站点账号 ID。若为空则使用匿名模式。
+	RequireAuth bool   // 若为 true，凭据不可用时报错 ErrCredentialExpired，严禁静默回退至匿名低画质。
 }

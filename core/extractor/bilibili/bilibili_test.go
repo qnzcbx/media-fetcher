@@ -23,12 +23,12 @@ func TestBilibiliExtractor_AnonymousAndAuthorized(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Setup Account "vip_user"
+	// 配置会员账号 "vip_user"
 	jar := cookiejar.New("bilibili", "vip_user")
 	acc := &auth.Account{SiteID: "bilibili", AccountID: "vip_user", Name: "VIP Member"}
 	_ = credService.RegisterOrUpdateAccount(acc, jar)
 
-	// Mock server
+	// 本地 Mock 服务端
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/x/web-interface/view":
@@ -64,7 +64,7 @@ func TestBilibiliExtractor_AnonymousAndAuthorized(t *testing.T) {
 				}
 			}
 
-			// If VIP cookie present, return 1080P and 480P; otherwise only 480P
+			// 若携带有效 VIP Cookie，则返回 1080P 和 480P；否则仅返回 480P
 			var videoStreams []map[string]interface{}
 			if hasVIPCookie {
 				videoStreams = append(videoStreams, map[string]interface{}{
@@ -108,7 +108,7 @@ func TestBilibiliExtractor_AnonymousAndAuthorized(t *testing.T) {
 	}))
 	defer server.Close()
 
-	// Set the VIP cookie matching the mock test server's host
+	// 将测试 VIP Cookie 绑定至 Mock 测试服务主机
 	srvURL, _ := url.Parse(server.URL)
 	jar.SetCookies(srvURL, []*http.Cookie{
 		{Name: "SESSDATA", Value: "vip_token_xyz", Path: "/"},
@@ -121,7 +121,7 @@ func TestBilibiliExtractor_AnonymousAndAuthorized(t *testing.T) {
 	ctx := context.Background()
 	testURL := "https://www.bilibili.com/video/BV1xXYx6BE1a/"
 
-	// 1. Anonymous Extraction
+	// 1. 匿名解析场景验证
 	anonInfo, err := ext.Extract(ctx, testURL, extractor.ExtractOptions{})
 	if err != nil {
 		t.Fatalf("anonymous extract failed: %v", err)
@@ -133,7 +133,7 @@ func TestBilibiliExtractor_AnonymousAndAuthorized(t *testing.T) {
 		t.Fatalf("expected only 480P for anonymous, got: %+v", anonInfo.VideoStreams)
 	}
 
-	// 2. Authorized Extraction with VIP Account
+	// 2. 携带 VIP 会员账号的认证解析场景验证
 	authInfo, err := ext.Extract(ctx, testURL, extractor.ExtractOptions{AccountID: "vip_user"})
 	if err != nil {
 		t.Fatalf("auth extract failed: %v", err)
@@ -148,7 +148,7 @@ func TestBilibiliExtractor_AnonymousAndAuthorized(t *testing.T) {
 		t.Fatalf("expected 1080P stream for VIP, got: %+v", authInfo.VideoStreams)
 	}
 
-	// 3. Requesting non-existent / expired account must return ErrCredentialExpired and NOT silently downgrade!
+	// 3. 请求不存在或已失效账号时，必须返回 ErrCredentialExpired 且严禁静默降级！
 	_, err = ext.Extract(ctx, testURL, extractor.ExtractOptions{AccountID: "non_existent_user"})
 	if err == nil {
 		t.Fatal("expected error when requested account is missing")

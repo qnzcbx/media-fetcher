@@ -23,13 +23,13 @@ var (
 	imgTagRE   = regexp.MustCompile(`(?is)<img\b[^>]*?\b(?:src|data-src)\s*=\s*["']([^"']+)["']`)
 )
 
-// LofterExtractor extracts image assets from LOFTER blog posts.
+// LofterExtractor 负责解析网易 LOFTER 博客文章中的图片资源。
 type LofterExtractor struct {
 	credService *auth.CredentialService
 	apiURL      string
 }
 
-// New creates a new LofterExtractor.
+// New 创建新的 LofterExtractor 实例。
 func New(credService *auth.CredentialService) *LofterExtractor {
 	return &LofterExtractor{
 		credService: credService,
@@ -37,17 +37,17 @@ func New(credService *auth.CredentialService) *LofterExtractor {
 	}
 }
 
-// SetAPIURL allows overriding endpoint for mock unit tests.
+// SetAPIURL 允许在单元测试中覆盖目标端点以重定向到本地 Mock 服务。
 func (e *LofterExtractor) SetAPIURL(u string) {
 	e.apiURL = u
 }
 
-// SiteID returns "lofter".
+// SiteID 返回平台标识 "lofter"。
 func (e *LofterExtractor) SiteID() string {
 	return "lofter"
 }
 
-// Match checks whether the given URL is a LOFTER post.
+// Match 检查传入 URL 是否指向 LOFTER 博文。
 func (e *LofterExtractor) Match(rawURL string) bool {
 	u, err := url.Parse(strings.TrimSpace(rawURL))
 	if err != nil {
@@ -114,7 +114,7 @@ type postDetails struct {
 	} `json:"blogInfo"`
 }
 
-// Extract fetches LOFTER post details and returns high-res image URLs.
+// Extract 获取 LOFTER 帖子详情并返回解析出的高清图片列表。
 func (e *LofterExtractor) Extract(ctx context.Context, rawURL string, opt extractor.ExtractOptions) (*extractor.MediaInfo, error) {
 	target, err := parseLofterIDs(rawURL)
 	if err != nil {
@@ -235,11 +235,11 @@ func (e *LofterExtractor) Extract(ctx context.Context, rawURL string, opt extrac
 
 func extractImageURLs(p postDetails) ([]string, error) {
 	switch p.Type {
-	case 2: // Photo
+	case 2: // 图片帖子
 		return parsePhotoLinks(p.PhotoLinks)
-	case 5: // QA / Images
+	case 5: // 问答/图片帖子
 		return parsePhotoLinks(p.Images)
-	case 1: // Article text with images
+	case 1: // 包含图片的图文长文章帖子
 		var candidates []string
 		for _, m := range imgTagRE.FindAllStringSubmatch(p.Content, -1) {
 			candidates = append(candidates, html.UnescapeString(m[1]))

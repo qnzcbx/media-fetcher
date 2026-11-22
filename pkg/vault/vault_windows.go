@@ -4,19 +4,20 @@ package vault
 
 import (
 	"fmt"
+	"math"
 	"unsafe"
 
 	"golang.org/x/sys/windows"
 )
 
-// DPAPIVault implements Vault using Windows Data Protection API (DPAPI).
-// It strictly uses the current user's credentials and refuses machine-wide scope.
+// DPAPIVault 使用 Windows 原生数据保护 API (DPAPI) 实现 Vault。
+// 严格工作于当前 Windows 用户作用域，禁止启用机器范围的 CRYPTPROTECT_LOCAL_MACHINE。
 type DPAPIVault struct {
 	entropy []byte
 }
 
-// NewDPAPIVault creates a new Windows DPAPI-based vault.
-// Optional entropy can be provided for additional defense-in-depth, or nil for default user scope.
+// NewDPAPIVault 创建基于 Windows 原生 DPAPI 的保险库实例。
+// 可传入可选的附加熵盐（optionalEntropy）增加纵深防御，或传入 nil 使用默认当前用户作用域。
 func NewDPAPIVault(optionalEntropy []byte) *DPAPIVault {
 	var ent []byte
 	if len(optionalEntropy) > 0 {
@@ -26,16 +27,19 @@ func NewDPAPIVault(optionalEntropy []byte) *DPAPIVault {
 	return &DPAPIVault{entropy: ent}
 }
 
-// NewDefaultVault returns the platform's standard Vault implementation.
+// NewDefaultVault 返回 Windows 平台的标准 Vault 实现。
 func NewDefaultVault() Vault {
 	return NewDPAPIVault(nil)
 }
 
-// Encrypt encrypts data using CryptProtectData under the current user's context.
-// Flags parameter is 0, explicitly avoiding CRYPTPROTECT_LOCAL_MACHINE (0x4).
+// Encrypt 使用 CryptProtectData 在当前用户上下文下加密数据。
+// 明确禁止使用 CRYPTPROTECT_LOCAL_MACHINE (0x4)，同时设置 CRYPTPROTECT_UI_FORBIDDEN (0x1) 禁止弹出系统交互提示框。
 func (v *DPAPIVault) Encrypt(plaintext []byte) ([]byte, error) {
 	if len(plaintext) == 0 {
 		return nil, ErrEmptyData
+	}
+	if len(plaintext) > math.MaxInt32 {
+		return nil, fmt.Errorf("vault: 明文长度超过安全上限 (%d 字节)", len(plaintext))
 	}
 
 	var inBlob windows.DataBlob
@@ -51,10 +55,11 @@ func (v *DPAPIVault) Encrypt(plaintext []byte) ([]byte, error) {
 	}
 
 	var outBlob windows.DataBlob
-	// Flags = 0 enforces current user scope, strictly forbidding CRYPTPROTECT_LOCAL_MACHINE.
-	err := windows.CryptProtectData(&inBlob, nil, entropyBlob, 0, nil, 0, &outBlob)
+	// Flags = CRYPTPROTECT_UI_FORBIDDEN (0x1)，严格限制为当前用户作用域且禁止弹出 UI。
+	const flags = windows.CRYPTPROTECT_UI_FORBIDDEN
+	err := windows.CryptProtectData(&inBlob, nil, entropyBlob, 0, nil, flags, &outBlob)
 	if err != nil {
-		return nil, fmt.Errorf("vault: DPAPI protect failed: %w", err)
+		return nil, fmt.Errorf("vault: Windows DPAPI 加密失败: %w", err)
 	}
 	defer windows.LocalFree(windows.Handle(unsafe.Pointer(outBlob.Data)))
 
@@ -63,10 +68,13 @@ func (v *DPAPIVault) Encrypt(plaintext []byte) ([]byte, error) {
 	return ciphertext, nil
 }
 
-// Decrypt decrypts DPAPI-encrypted ciphertext using CryptUnprotectData.
+// Decrypt 使用 CryptUnprotectData 解密当前用户作用域的密文。
 func (v *DPAPIVault) Decrypt(ciphertext []byte) ([]byte, error) {
 	if len(ciphertext) == 0 {
 		return nil, ErrEmptyData
+	}
+	if len(ciphertext) > math.MaxInt32 {
+		return nil, fmt.Errorf("vault: 密文长度超过安全上限 (%d 字节)", len(ciphertext))
 	}
 
 	var inBlob windows.DataBlob
@@ -82,7 +90,8 @@ func (v *DPAPIVault) Decrypt(ciphertext []byte) ([]byte, error) {
 	}
 
 	var outBlob windows.DataBlob
-	err := windows.CryptUnprotectData(&inBlob, nil, entropyBlob, 0, nil, 0, &outBlob)
+	const flags = windows.CRYPTPROTECT_UI_FORBIDDEN
+	err := windows.CryptUnprotectData(&inBlob, nil, entropyBlob, 0, nil, flags, &outBlob)
 	if err != nil {
 		return nil, fmt.Errorf("%w: %v", ErrDecryptionFailed, err)
 	}

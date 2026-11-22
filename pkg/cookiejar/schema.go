@@ -2,10 +2,10 @@ package cookiejar
 
 import "time"
 
-// CurrentSchemaVersion denotes the format version of serialized credentials.
+// CurrentSchemaVersion 表示序列化凭证数据的格式版本号。
 const CurrentSchemaVersion = 1
 
-// StorageSchema defines the versioned JSON structure for serialized CookieJar.
+// StorageSchema 定义序列化 CookieJar 的版本化 JSON 存储结构。
 type StorageSchema struct {
 	Version   int           `json:"version"`
 	SiteID    string        `json:"site_id"`

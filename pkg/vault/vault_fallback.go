@@ -2,7 +2,7 @@
 
 package vault
 
-// NewDefaultVault returns a fallback mock vault for non-Windows platforms.
+// NewDefaultVault 在非 Windows 平台返回安全占位 Vault，拒绝可逆弱加密落盘。
 func NewDefaultVault() Vault {
-	return NewMockVault("default_user")
+	return &UnavailableVault{}
 }

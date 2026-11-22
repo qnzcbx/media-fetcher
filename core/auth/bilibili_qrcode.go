@@ -15,27 +15,27 @@ import (
 	"media-fetcher/pkg/cookiejar"
 )
 
-// QRLoginState represents the state of a Bilibili QR code login process.
+// QRLoginState 表示哔哩哔哩二维码登录流程的状态枚举。
 type QRLoginState string
 
 const (
-	QRStateWaiting   QRLoginState = "waiting"   // 86101: QR created, waiting to be scanned
-	QRStateScanned   QRLoginState = "scanned"   // 86090: QR scanned by phone, waiting for confirmation
-	QRStateConfirmed QRLoginState = "confirmed" // 0: User confirmed on phone, login succeeded
-	QRStateExpired   QRLoginState = "expired"   // 86038: QR code expired
-	QRStateFailed    QRLoginState = "failed"    // Other API errors or network failure
+	QRStateWaiting   QRLoginState = "waiting"   // 86101: 二维码已生成，等待扫码
+	QRStateScanned   QRLoginState = "scanned"   // 86090: 手机端已扫码，等待用户确认
+	QRStateConfirmed QRLoginState = "confirmed" // 0: 手机端确认登录成功
+	QRStateExpired   QRLoginState = "expired"   // 86038: 二维码已超时过期
+	QRStateFailed    QRLoginState = "failed"    // 其他接口错误或网络异常
 )
 
-// QRCodeSession holds the state of an active QR code login attempt.
+// QRCodeSession 维护当前活跃的二维码登录会话状态。
 type QRCodeSession struct {
 	QRCodeKey string       `json:"qrcode_key"`
-	URL       string       `json:"url"` // QR code target URL
+	URL       string       `json:"url"` // 二维码原始目标 URL
 	State     QRLoginState `json:"state"`
 	Message   string       `json:"message"`
 	CreatedAt time.Time    `json:"created_at"`
 }
 
-// BilibiliQRLoginCoordinator handles the Bilibili QR login lifecycle.
+// BilibiliQRLoginCoordinator 协调哔哩哔哩扫码登录的完整生命周期。
 type BilibiliQRLoginCoordinator struct {
 	passportBase string
 	apiBase      string
@@ -43,7 +43,7 @@ type BilibiliQRLoginCoordinator struct {
 	httpClient   *http.Client
 }
 
-// NewBilibiliQRLoginCoordinator creates a new coordinator.
+// NewBilibiliQRLoginCoordinator 创建新的扫码登录协调器实例。
 func NewBilibiliQRLoginCoordinator(credService *CredentialService) *BilibiliQRLoginCoordinator {
 	return &BilibiliQRLoginCoordinator{
 		passportBase: "https://passport.bilibili.com",
@@ -53,13 +53,13 @@ func NewBilibiliQRLoginCoordinator(credService *CredentialService) *BilibiliQRLo
 	}
 }
 
-// SetBaseURLs allows overriding endpoints for mock unit tests.
+// SetBaseURLs 允许在单元测试中覆盖目标端点以重定向到本地 Mock 服务。
 func (c *BilibiliQRLoginCoordinator) SetBaseURLs(passportBase, apiBase string) {
 	c.passportBase = passportBase
 	c.apiBase = apiBase
 }
 
-// GenerateQRCode requests a new QR code login session from Bilibili.
+// GenerateQRCode 向哔哩哔哩请求创建新的二维码登录会话。
 func (c *BilibiliQRLoginCoordinator) GenerateQRCode(ctx context.Context) (*QRCodeSession, error) {
 	reqURL := fmt.Sprintf("%s/x/passport-login/web/qrcode/generate", strings.TrimRight(c.passportBase, "/"))
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, reqURL, nil)
@@ -105,16 +105,16 @@ func (c *BilibiliQRLoginCoordinator) GenerateQRCode(ctx context.Context) (*QRCod
 	}, nil
 }
 
-// PollResult represents the result of a single poll check.
+// PollResult 表示一次轮询检查的结果状态。
 type PollResult struct {
 	State       QRLoginState `json:"state"`
 	Message     string       `json:"message"`
 	AccountInfo *SafeAccount `json:"account_info,omitempty"`
 }
 
-// PollStatus queries Bilibili for the current status of the QR code session.
-// When state reaches QRStateConfirmed, it collects the Set-Cookie headers into a new jar,
-// verifies identity against /x/web-interface/nav, and registers the verified account.
+// PollStatus 查询哔哩哔哩服务端以获取当前二维码会话的状态。
+// 当状态变为 QRStateConfirmed 时，自动采集 Set-Cookie 头部至新 Jar，
+// 并请求 /x/web-interface/nav 核验用户身份，将已核验账号登记入凭证中心。
 func (c *BilibiliQRLoginCoordinator) PollStatus(ctx context.Context, qrcodeKey string) (*PollResult, error) {
 	pollURL := fmt.Sprintf("%s/x/passport-login/web/qrcode/poll?qrcode_key=%s",
 		strings.TrimRight(c.passportBase, "/"), url.QueryEscape(qrcodeKey))
@@ -151,7 +151,7 @@ func (c *BilibiliQRLoginCoordinator) PollStatus(ctx context.Context, qrcodeKey s
 	}
 
 	code := reply.Data.Code
-	// When top-level code != 0, check top-level
+	// 当外层 code != 0 时，检查外层错误码
 	if reply.Code != 0 {
 		code = reply.Code
 	}
@@ -164,9 +164,9 @@ func (c *BilibiliQRLoginCoordinator) PollStatus(ctx context.Context, qrcodeKey s
 	case 86038:
 		return &PollResult{State: QRStateExpired, Message: "二维码已过期"}, nil
 	case 0:
-		// Confirmed! Collect cookies
+		// 扫码确认成功，收集 Cookie 凭据
 		cookies := resp.Cookies()
-		// Also parse cookies from redirected url if present
+		// 若返回重定向 URL，同步提取 URL 中的凭证参数
 		if reply.Data.URL != "" {
 			if u, err := url.Parse(reply.Data.URL); err == nil {
 				q := u.Query()
@@ -203,12 +203,12 @@ func (c *BilibiliQRLoginCoordinator) PollStatus(ctx context.Context, qrcodeKey s
 			return &PollResult{State: QRStateFailed, Message: "登录确认成功但未收到凭证 Cookie"}, errors.New("no cookies in response")
 		}
 
-		// Stage into a temporary jar
+		// 暂存至临时 Jar
 		tempJar := cookiejar.New("bilibili", "pending_login")
 		biliURL, _ := url.Parse("https://bilibili.com")
 		tempJar.SetCookies(biliURL, cookies)
 
-		// Verify identity using /x/web-interface/nav
+		// 调用 /x/web-interface/nav 进行在线身份验证
 		verifyClient := &http.Client{Jar: tempJar, Timeout: 15 * time.Second}
 		name, avatar, mid, valid, meta, err := c.verifyNav(ctx, verifyClient)
 		if err != nil || !valid {
@@ -249,7 +249,7 @@ func (c *BilibiliQRLoginCoordinator) PollStatus(ctx context.Context, qrcodeKey s
 	}
 }
 
-// verifyNav calls Bilibili nav endpoint to verify active session and fetch user profile.
+// verifyNav 请求哔哩哔哩 nav 接口核验当前会话有效性并获取用户基本资料。
 func (c *BilibiliQRLoginCoordinator) verifyNav(ctx context.Context, client *http.Client) (name, avatar string, mid int64, valid bool, meta map[string]string, err error) {
 	navURL := fmt.Sprintf("%s/x/web-interface/nav", strings.TrimRight(c.apiBase, "/"))
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, navURL, nil)

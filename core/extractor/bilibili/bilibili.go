@@ -68,14 +68,14 @@ type rawViewReply struct {
 	} `json:"data"`
 }
 
-// BilibiliExtractor extracts video and audio streams from Bilibili.
+// BilibiliExtractor 负责解析哔哩哔哩视频与音频流。
 type BilibiliExtractor struct {
 	credService *auth.CredentialService
 	apiBase     string
 	webBase     string
 }
 
-// New creates a new BilibiliExtractor.
+// New 创建新的 BilibiliExtractor 实例。
 func New(credService *auth.CredentialService) *BilibiliExtractor {
 	return &BilibiliExtractor{
 		credService: credService,
@@ -84,18 +84,18 @@ func New(credService *auth.CredentialService) *BilibiliExtractor {
 	}
 }
 
-// SetBaseURLs allows overriding endpoints for mock unit testing.
+// SetBaseURLs 允许在单元测试中覆盖目标端点以重定向到本地 Mock 服务。
 func (e *BilibiliExtractor) SetBaseURLs(apiBase, webBase string) {
 	e.apiBase = apiBase
 	e.webBase = webBase
 }
 
-// SiteID returns "bilibili".
+// SiteID 返回平台标识 "bilibili"。
 func (e *BilibiliExtractor) SiteID() string {
 	return "bilibili"
 }
 
-// Match checks if URL points to a Bilibili video.
+// Match 检查传入 URL 是否指向哔哩哔哩视频。
 func (e *BilibiliExtractor) Match(rawURL string) bool {
 	raw := strings.TrimSpace(rawURL)
 	if m := linkRE.FindString(raw); m != "" {
@@ -113,7 +113,7 @@ func (e *BilibiliExtractor) Match(rawURL string) bool {
 	return len(parts) >= 2 && parts[0] == "video" && bvRE.MatchString(parts[1])
 }
 
-// VideoTarget holds parsed BVID and Page number.
+// VideoTarget 保存解析得到的 BVID 和分 P 序号。
 type VideoTarget struct {
 	BVID      string
 	Page      int
@@ -150,7 +150,7 @@ func parseVideoTarget(raw string) (VideoTarget, error) {
 	}, nil
 }
 
-// Extract parses Bilibili video streams according to authorization rules.
+// Extract 严格依据权限规则解析哔哩哔哩视频音轨流。
 func (e *BilibiliExtractor) Extract(ctx context.Context, rawURL string, opt extractor.ExtractOptions) (*extractor.MediaInfo, error) {
 	target, err := parseVideoTarget(rawURL)
 	if err != nil {
@@ -166,7 +166,7 @@ func (e *BilibiliExtractor) Extract(ctx context.Context, rawURL string, opt extr
 		}
 		c, err := e.credService.GetClient("bilibili", opt.AccountID)
 		if err != nil {
-			// Explicit account requested but not available/expired -> DO NOT silently downgrade!
+			// 明确请求了指定账号但不可用或已过期 -> 严禁静默降级！
 			return nil, fmt.Errorf("%w: cannot use requested account %s: %v", extractor.ErrCredentialExpired, opt.AccountID, err)
 		}
 		client = c
@@ -182,7 +182,7 @@ func (e *BilibiliExtractor) Extract(ctx context.Context, rawURL string, opt extr
 		}
 	}
 
-	// 1. Fetch Video Info (Title, CID, Author, Cover)
+	// 1. 获取视频基本信息（标题、CID、UP主、封面）
 	viewURL := fmt.Sprintf("%s/x/web-interface/view?bvid=%s", strings.TrimRight(e.apiBase, "/"), target.BVID)
 	viewData, err := httpGet(ctx, client, viewURL, target.TargetURL)
 	if err != nil {
@@ -210,13 +210,13 @@ func (e *BilibiliExtractor) Extract(ctx context.Context, rawURL string, opt extr
 		return nil, fmt.Errorf("%w: cannot resolve CID for video", extractor.ErrAPIDenied)
 	}
 
-	// 2. Fetch PlayInfo via WBI API
+	// 2. 通过 WBI 接口获取 PlayInfo
 	playInfo, err := e.fetchWbiPlayInfo(ctx, client, target.BVID, cid, target.TargetURL)
 	if err != nil {
 		return nil, err
 	}
 
-	// 3. Map Streams into MediaInfo
+	// 3. 将流信息映射为统一的 MediaInfo
 	media := &extractor.MediaInfo{
 		SiteID:        "bilibili",
 		ID:            target.BVID,
@@ -243,7 +243,7 @@ func (e *BilibiliExtractor) Extract(ctx context.Context, rawURL string, opt extr
 			Bandwidth:    v.Bandwidth,
 			URL:          u,
 			BackupURLs:   v.BackupURL,
-			NeedAuth:     v.ID > 64, // 1080P and above require login/VIP
+			NeedAuth:     v.ID > 64, // 1080P 及以上需要登录或大会员
 		})
 	}
 
@@ -266,7 +266,7 @@ func (e *BilibiliExtractor) Extract(ctx context.Context, rawURL string, opt extr
 }
 
 func (e *BilibiliExtractor) fetchWbiPlayInfo(ctx context.Context, client *http.Client, bvid string, cid int64, referer string) (*rawPlayInfo, error) {
-	// 1. Fetch nav to obtain WBI img_url and sub_url
+	// 1. 请求 nav 获取 WBI 的 img_url 和 sub_url
 	navURL := fmt.Sprintf("%s/x/web-interface/nav", strings.TrimRight(e.apiBase, "/"))
 	navData, err := httpGet(ctx, client, navURL, referer)
 	if err != nil {
@@ -292,7 +292,7 @@ func (e *BilibiliExtractor) fetchWbiPlayInfo(ctx context.Context, client *http.C
 		return nil, fmt.Errorf("%w: mixin WBI key: %v", extractor.ErrAPIDenied, err)
 	}
 
-	// 2. Build signed playurl request (fnval=16 for DASH)
+	// 2. 构造 WBI 签名的 playurl 请求（fnval=16 请求 DASH 格式）
 	q := url.Values{
 		"bvid":  {bvid},
 		"cid":   {strconv.FormatInt(cid, 10)},

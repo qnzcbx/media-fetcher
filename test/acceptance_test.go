@@ -25,7 +25,7 @@ import (
 func TestAcceptance1_LoginRestartAndResume(t *testing.T) {
 	storageDir := t.TempDir()
 
-	// Use DPAPI vault if on Windows, or mock vault if not
+	// 在 Windows 平台使用 DPAPI，在非 Windows 平台使用测试替身 MockVault
 	var v vault.Vault
 	if runtime.GOOS == "windows" {
 		v = vault.NewDPAPIVault(nil)
@@ -48,7 +48,7 @@ func TestAcceptance1_LoginRestartAndResume(t *testing.T) {
 
 	srvURL, _ := url.Parse(mockSite.URL)
 
-	// Phase 1: Initial Login and Save
+	// 阶段 1: 首次登录并加密保存凭据
 	service1, err := auth.NewCredentialService(storageDir, v)
 	if err != nil {
 		t.Fatalf("Phase 1: failed to init CredentialService: %v", err)
@@ -62,7 +62,7 @@ func TestAcceptance1_LoginRestartAndResume(t *testing.T) {
 			Domain:   srvURL.Hostname(),
 			Path:     "/",
 			HttpOnly: true,
-			Secure:   false, // mock site uses http
+			Secure:   false, // 本地 Mock 测试站点采用 HTTP
 			Expires:  time.Now().Add(24 * time.Hour),
 		},
 	})
@@ -76,7 +76,7 @@ func TestAcceptance1_LoginRestartAndResume(t *testing.T) {
 		t.Fatalf("Phase 1: register account failed: %v", err)
 	}
 
-	// Phase 2: Close and Simulate App Restart
+	// 阶段 2: 关闭程序并模拟重启加载恢复
 	service1 = nil
 
 	service2, err := auth.NewCredentialService(storageDir, v)
@@ -108,19 +108,19 @@ func TestAcceptance2_CookieRFC6265Semantics(t *testing.T) {
 	httpURL, _ := url.Parse("http://sub.bilibili.com/video/item")
 
 	jar.SetCookies(httpsURL, []*http.Cookie{
-		// Domain cookie matching *.bilibili.com
+		// 匹配 *.bilibili.com 的泛域名 Cookie
 		{Name: "c_domain", Value: "val_domain", Domain: ".bilibili.com", Path: "/video"},
-		// HostOnly cookie matching only sub.bilibili.com
+		// 仅匹配 sub.bilibili.com 的 HostOnly Cookie
 		{Name: "c_hostonly", Value: "val_host", Path: "/video"},
-		// Secure cookie (HTTPS only)
+		// 仅允许在 HTTPS 传输的 Secure Cookie
 		{Name: "c_secure", Value: "val_sec", Domain: ".bilibili.com", Path: "/", Secure: true},
-		// HttpOnly + SameSite Lax
+		// HttpOnly + SameSite Lax 标记
 		{Name: "c_httponly", Value: "val_http", Domain: ".bilibili.com", Path: "/", HttpOnly: true, SameSite: http.SameSiteLaxMode},
-		// Invalid Domain (Security check)
+		// 域名不匹配的非法 Domain（安全拦截检查）
 		{Name: "c_illegal", Value: "val_bad", Domain: "google.com", Path: "/"},
 	})
 
-	// 1. Verify HTTPS request to sub.bilibili.com/video/item receives matched cookies
+	// 1. 验证发往 sub.bilibili.com/video/item 的 HTTPS 请求正确收到匹配的 Cookie
 	cookies := jar.Cookies(httpsURL)
 	cMap := make(map[string]*http.Cookie)
 	for _, c := range cookies {
@@ -143,7 +143,7 @@ func TestAcceptance2_CookieRFC6265Semantics(t *testing.T) {
 		t.Error("c_illegal should be rejected for domain mismatch")
 	}
 
-	// 2. HTTP request should NOT receive c_secure
+	// 2. HTTP 请求绝不能接收到 c_secure
 	httpCookies := jar.Cookies(httpURL)
 	for _, c := range httpCookies {
 		if c.Name == "c_secure" {
@@ -151,7 +151,7 @@ func TestAcceptance2_CookieRFC6265Semantics(t *testing.T) {
 		}
 	}
 
-	// 3. Different subdomain should NOT receive c_hostonly
+	// 3. 不同的子域名绝不能接收到 c_hostonly
 	otherSubURL, _ := url.Parse("https://api.bilibili.com/video/item")
 	otherCookies := jar.Cookies(otherSubURL)
 	for _, c := range otherCookies {
@@ -174,14 +174,14 @@ func TestAcceptance3_ExpiredOrDeletedCookiesDoNotRestore(t *testing.T) {
 	u, _ := url.Parse("https://www.bilibili.com/")
 	jar := cookiejar.New("bilibili", "user_exp")
 
-	// Set active cookie and expired cookie
+	// 设置活跃 Cookie 与已过期 Cookie
 	jar.SetCookies(u, []*http.Cookie{
 		{Name: "valid_cookie", Value: "1", Domain: ".bilibili.com", Path: "/", Expires: time.Now().Add(1 * time.Hour)},
 		{Name: "expired_cookie", Value: "2", Domain: ".bilibili.com", Path: "/", Expires: time.Now().Add(-1 * time.Hour)},
 		{Name: "deleted_cookie", Value: "3", Domain: ".bilibili.com", Path: "/"},
 	})
 
-	// Server issues deletion for deleted_cookie
+	// 服务端下发指令删除 deleted_cookie
 	jar.SetCookies(u, []*http.Cookie{
 		{Name: "deleted_cookie", Value: "", Domain: ".bilibili.com", Path: "/", MaxAge: -1},
 	})
@@ -191,7 +191,7 @@ func TestAcceptance3_ExpiredOrDeletedCookiesDoNotRestore(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Simulate restart
+	// 模拟重启进程
 	service = nil
 	restarted, err := auth.NewCredentialService(storageDir, v)
 	if err != nil {
@@ -234,17 +234,17 @@ func TestAcceptance4_AccountIsolation_NoCookieCrossContamination(t *testing.T) {
 
 	srvURL, _ := url.Parse(server.URL)
 
-	// Register Alice
+	// 登记账号 Alice
 	jarA := cookiejar.New("bilibili", "alice")
 	jarA.SetCookies(srvURL, []*http.Cookie{{Name: "TOKEN", Value: "ALICE_TOKEN", Path: "/"}})
 	_ = service.RegisterOrUpdateAccount(&auth.Account{SiteID: "bilibili", AccountID: "alice", Name: "Alice"}, jarA)
 
-	// Register Bob
+	// 登记账号 Bob
 	jarB := cookiejar.New("bilibili", "bob")
 	jarB.SetCookies(srvURL, []*http.Cookie{{Name: "TOKEN", Value: "BOB_TOKEN", Path: "/"}})
 	_ = service.RegisterOrUpdateAccount(&auth.Account{SiteID: "bilibili", AccountID: "bob", Name: "Bob"}, jarB)
 
-	// 1. Request as Alice
+	// 1. 以 Alice 身份请求
 	clientA, _ := service.GetClient("bilibili", "alice")
 	receivedAliceCookie = false
 	receivedBobCookie = false
@@ -253,7 +253,7 @@ func TestAcceptance4_AccountIsolation_NoCookieCrossContamination(t *testing.T) {
 		t.Fatalf("Alice request contamination! Alice=%v, Bob=%v", receivedAliceCookie, receivedBobCookie)
 	}
 
-	// 2. Request as Bob
+	// 2. 以 Bob 身份请求
 	clientB, _ := service.GetClient("bilibili", "bob")
 	receivedAliceCookie = false
 	receivedBobCookie = false
@@ -262,7 +262,7 @@ func TestAcceptance4_AccountIsolation_NoCookieCrossContamination(t *testing.T) {
 		t.Fatalf("Bob request contamination! Alice=%v, Bob=%v", receivedAliceCookie, receivedBobCookie)
 	}
 
-	// 3. Anonymous Client must send NO cookies at all
+	// 3. 匿名客户端绝不能发送任何凭据 Cookie
 	anonClient := service.GetAnonymousClient("bilibili")
 	receivedAliceCookie = false
 	receivedBobCookie = false
@@ -283,13 +283,13 @@ func TestAcceptance5_MultiUserDPAPISimulation(t *testing.T) {
 		t.Fatalf("User1 encrypt failed: %v", err)
 	}
 
-	// User 1 successfully decrypts
+	// 用户 1 能够成功解密自己的密文
 	decrypted, err := vaultUser1.Decrypt(ciphertext)
 	if err != nil || string(decrypted) != string(plaintext) {
 		t.Fatalf("User1 self-decrypt failed: %v", err)
 	}
 
-	// User 2 attempts to decrypt User 1's ciphertext -> MUST fail
+	// 用户 2 尝试解密用户 1 的密文 -> 必须失败
 	_, err = vaultUser2.Decrypt(ciphertext)
 	if err == nil {
 		t.Fatal("User 2 should NOT be able to decrypt User 1's ciphertext")
@@ -298,7 +298,7 @@ func TestAcceptance5_MultiUserDPAPISimulation(t *testing.T) {
 		t.Fatalf("expected ErrDecryptionFailed, got: %v", err)
 	}
 
-	// On Windows, test native DPAPI with different entropy
+	// 在 Windows 平台上，测试使用不同熵盐的 DPAPI 隔离行为
 	if runtime.GOOS == "windows" {
 		dpapi1 := vault.NewDPAPIVault([]byte("entropy_a"))
 		dpapi2 := vault.NewDPAPIVault([]byte("entropy_b"))
@@ -328,11 +328,11 @@ func TestAcceptance6_CorruptCiphertextGracefulDegradation(t *testing.T) {
 	acc := &auth.Account{SiteID: "bilibili", AccountID: "user_corrupt", Name: "CorruptTester"}
 	_ = service.RegisterOrUpdateAccount(acc, jar)
 
-	// Tamper with the encrypted credential file
+	// 恶意篡改加密凭据文件
 	credPath := filepath.Join(storageDir, "bilibili_user_corrupt.cred")
 	_ = os.WriteFile(credPath, []byte("INVALID_CORRUPT_CIPHERTEXT"), 0600)
 
-	// Restart service -> must not panic
+	// 重启凭证服务 -> 绝不能 panic
 	restarted, err := auth.NewCredentialService(storageDir, v)
 	if err != nil {
 		t.Fatalf("restarting with corrupt file must not fail constructor: %v", err)
@@ -365,22 +365,22 @@ func TestAcceptance7_AccountDeletionPurgesDiskAndMemory(t *testing.T) {
 		t.Fatalf("cred file should exist: %v", err)
 	}
 
-	// Perform Delete
+	// 执行删除注销
 	if err := service.DeleteAccount("bilibili", "user_to_delete"); err != nil {
 		t.Fatalf("delete account failed: %v", err)
 	}
 
-	// 1. Verify disk file removed
+	// 1. 验证磁盘凭据文件已被物理删除
 	if _, err := os.Stat(credFile); !os.IsNotExist(err) {
 		t.Errorf("cred file was NOT deleted from disk")
 	}
 
-	// 2. Verify memory session purged
+	// 2. 验证内存中的会话实例被同步清除
 	if _, err := service.GetClient("bilibili", "user_to_delete"); err == nil {
 		t.Errorf("client was not purged from memory")
 	}
 
-	// 3. Verify accounts list updated
+	// 3. 验证账号列表元数据已更新
 	if _, err := service.GetAccount("bilibili", "user_to_delete"); !errors.Is(err, auth.ErrAccountNotFound) {
 		t.Errorf("account metadata was not removed")
 	}
@@ -397,7 +397,7 @@ func TestAcceptance8_NoSilentDowngradeOnAuthFailure(t *testing.T) {
 	ctx := context.Background()
 	testURL := "https://www.bilibili.com/video/BV1xXYx6BE1a/"
 
-	// User requested extraction with account "expired_vip_user"
+	// 用户明确请求使用指定账号 "expired_vip_user" 解析
 	opts := extractor.ExtractOptions{
 		AccountID: "non_existent_or_expired_vip_user",
 	}
@@ -407,7 +407,7 @@ func TestAcceptance8_NoSilentDowngradeOnAuthFailure(t *testing.T) {
 		t.Fatal("expected error when requested account credentials are not available")
 	}
 
-	// Must fail with ErrCredentialExpired rather than returning lower quality 480P!
+	// 必须以 ErrCredentialExpired 显式报错，严禁静默回退降级为低画质 480P！
 	if !errors.Is(err, extractor.ErrCredentialExpired) {
 		t.Fatalf("expected ErrCredentialExpired, got: %v", err)
 	}

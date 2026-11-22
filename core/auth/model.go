@@ -2,7 +2,7 @@ package auth
 
 import "time"
 
-// AccountStatus represents the authentication lifecycle state of an account.
+// AccountStatus 表示账号的认证生命周期状态。
 type AccountStatus string
 
 const (
@@ -11,9 +11,9 @@ const (
 	StatusLoggedOut AccountStatus = "logged_out"
 )
 
-// Account represents an authenticated user on a specific site.
-// Sensitive data (Cookies, Tokens) are strictly managed via PersistentCookieJar and Vault,
-// and are NEVER stored in this struct or exposed in JSON.
+// Account 表示特定站点上的已认证用户账号。
+// 敏感数据（Cookie、Token 等）由 PersistentCookieJar 和 Vault 统一安全加密管理，
+// 严禁在此结构体中直接存储明文凭证，也绝不会在 JSON 序列化中暴露。
 type Account struct {
 	SiteID          string            `json:"site_id"`
 	AccountID       string            `json:"account_id"`
@@ -26,7 +26,7 @@ type Account struct {
 	Metadata        map[string]string `json:"metadata,omitempty"`
 }
 
-// SafeAccount is the sanitized representation exposed to frontend/UI and logs.
+// SafeAccount 是提供给前端/UI 和日志展示的安全脱敏账号实体。
 type SafeAccount struct {
 	SiteID          string        `json:"site_id"`
 	AccountID       string        `json:"account_id"`
@@ -37,7 +37,7 @@ type SafeAccount struct {
 	LastValidatedAt time.Time     `json:"last_validated_at"`
 }
 
-// ToSafe returns the sanitized SafeAccount suitable for UI display.
+// ToSafe 返回适用于 UI 渲染与日志输出的安全脱敏 SafeAccount。
 func (a *Account) ToSafe() SafeAccount {
 	return SafeAccount{
 		SiteID:          a.SiteID,

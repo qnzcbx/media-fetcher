@@ -18,11 +18,11 @@ var mixinIndex = [...]int{
 	11, 36, 20, 34, 44, 52,
 }
 
-// MixinKey derives the mixed WBI key from img_key and sub_key.
+// MixinKey 根据 img_key 和 sub_key 按照置换表生成 WBI 混淆密钥。
 func MixinKey(imgKey, subKey string) (string, error) {
 	raw := imgKey + subKey
 	if len(raw) < 64 {
-		return "", errors.New("wbi: img_key + sub_key length less than 64")
+		return "", errors.New("wbi: img_key + sub_key 长度不足 64 字节")
 	}
 	out := make([]byte, 32)
 	for i := 0; i < 32; i++ {
@@ -31,7 +31,7 @@ func MixinKey(imgKey, subKey string) (string, error) {
 	return string(out), nil
 }
 
-// KeyFromImageURL extracts the hash key from a Bilibili CDN image URL.
+// KeyFromImageURL 从哔哩哔哩 CDN 图片链接中提取哈希 Key。
 func KeyFromImageURL(s string) string {
 	u, err := url.Parse(s)
 	if err != nil {
@@ -41,7 +41,7 @@ func KeyFromImageURL(s string) string {
 	return strings.TrimSuffix(b, path.Ext(b))
 }
 
-// SignQuery adds wts timestamp and calculates w_rid MD5 signature for WBI requests.
+// SignQuery 为 WBI 请求附加 wts 时间戳并计算生成 w_rid MD5 签名。
 func SignQuery(q url.Values, mixinKey string, at time.Time) string {
 	q.Set("wts", strconv.FormatInt(at.Unix(), 10))
 	for k, values := range q {

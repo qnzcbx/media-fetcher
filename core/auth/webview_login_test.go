@@ -19,7 +19,7 @@ func TestWebViewLoginCoordinator_Lifecycle(t *testing.T) {
 
 	coord := NewWebViewLoginCoordinator(service)
 
-	// 1. Start Session
+	// 1. 开启会话
 	sess, err := coord.StartSession("bilibili")
 	if err != nil {
 		t.Fatalf("StartSession failed: %v", err)
@@ -28,7 +28,7 @@ func TestWebViewLoginCoordinator_Lifecycle(t *testing.T) {
 		t.Fatalf("invalid session returned: %+v", sess)
 	}
 
-	// 2. Cancellation Test
+	// 2. 取消会话测试
 	sessCancel, err := coord.StartSession("bilibili")
 	if err != nil {
 		t.Fatal(err)
@@ -36,7 +36,7 @@ func TestWebViewLoginCoordinator_Lifecycle(t *testing.T) {
 	if err := coord.CancelSession(sessCancel.SessionID); err != nil {
 		t.Fatalf("CancelSession failed: %v", err)
 	}
-	// Trying to complete a cancelled session should fail
+	// 尝试完成已取消的会话必须失败
 	_, err = coord.CompleteSession(context.Background(), sessCancel.SessionID, []*http.Cookie{
 		{Name: "SESSDATA", Value: "val"},
 	}, nil)
@@ -44,7 +44,7 @@ func TestWebViewLoginCoordinator_Lifecycle(t *testing.T) {
 		t.Fatalf("expected ErrSessionNotFound for cancelled session, got: %v", err)
 	}
 
-	// 3. Complete Session with Validator
+	// 3. 携带核验函数完成登录会话
 	mockCookies := []*http.Cookie{
 		{
 			Name:     "SESSDATA",
@@ -57,7 +57,7 @@ func TestWebViewLoginCoordinator_Lifecycle(t *testing.T) {
 	}
 
 	validator := func(ctx context.Context, client *http.Client) (name, avatar, accountID string, valid bool, meta map[string]string, err error) {
-		// Verify client has the cookies
+		// 校验核验客户端已成功挂载临时 Cookie
 		u, _ := url.Parse("https://bilibili.com")
 		c := client.Jar.Cookies(u)
 		if len(c) == 0 || c[0].Value != "webview_secret_token" {
@@ -74,7 +74,7 @@ func TestWebViewLoginCoordinator_Lifecycle(t *testing.T) {
 		t.Fatalf("unexpected safe account: %+v", safeAcc)
 	}
 
-	// Verify persistence in CredentialService
+	// 验证在 CredentialService 中完成加密持久化登记
 	acc, err := service.GetAccount("bilibili", "555888")
 	if err != nil || acc.Name != "WebUser" {
 		t.Fatalf("account not registered in service: %v", err)

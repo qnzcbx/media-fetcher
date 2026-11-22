@@ -20,7 +20,7 @@ func TestBilibiliQRLoginCoordinator_FullFlow(t *testing.T) {
 
 	pollCallCount := 0
 
-	// Mock Bilibili Passport and API Server
+	// 模拟哔哩哔哩 Passport 与 API 服务端
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/x/passport-login/web/qrcode/generate":
@@ -35,7 +35,7 @@ func TestBilibiliQRLoginCoordinator_FullFlow(t *testing.T) {
 		case "/x/passport-login/web/qrcode/poll":
 			pollCallCount++
 			if pollCallCount == 1 {
-				// State 1: Waiting
+				// 状态 1：等待扫码
 				_ = json.NewEncoder(w).Encode(map[string]interface{}{
 					"code": 0,
 					"data": map[string]interface{}{
@@ -44,7 +44,7 @@ func TestBilibiliQRLoginCoordinator_FullFlow(t *testing.T) {
 					},
 				})
 			} else if pollCallCount == 2 {
-				// State 2: Scanned
+				// 状态 2：已扫码
 				_ = json.NewEncoder(w).Encode(map[string]interface{}{
 					"code": 0,
 					"data": map[string]interface{}{
@@ -53,7 +53,7 @@ func TestBilibiliQRLoginCoordinator_FullFlow(t *testing.T) {
 					},
 				})
 			} else {
-				// State 3: Confirmed with Cookie
+				// 状态 3：确认登录并下发 Cookie
 				http.SetCookie(w, &http.Cookie{
 					Name:     "SESSDATA",
 					Value:    "sess_verified_token",
@@ -72,7 +72,7 @@ func TestBilibiliQRLoginCoordinator_FullFlow(t *testing.T) {
 			}
 
 		case "/x/web-interface/nav":
-			// Identity verification endpoint
+			// 身份核验接口
 			_ = json.NewEncoder(w).Encode(map[string]interface{}{
 				"code": 0,
 				"data": map[string]interface{}{
@@ -96,7 +96,7 @@ func TestBilibiliQRLoginCoordinator_FullFlow(t *testing.T) {
 
 	ctx := context.Background()
 
-	// 1. Generate QR Code
+	// 1. 生成二维码
 	qrSession, err := coord.GenerateQRCode(ctx)
 	if err != nil {
 		t.Fatalf("GenerateQRCode failed: %v", err)
@@ -105,19 +105,19 @@ func TestBilibiliQRLoginCoordinator_FullFlow(t *testing.T) {
 		t.Fatalf("unexpected qrcode key: %s", qrSession.QRCodeKey)
 	}
 
-	// 2. Poll 1 -> Waiting
+	// 2. 第 1 次轮询 -> 等待扫码
 	res1, err := coord.PollStatus(ctx, qrSession.QRCodeKey)
 	if err != nil || res1.State != QRStateWaiting {
 		t.Fatalf("expected waiting, got: %+v, err: %v", res1, err)
 	}
 
-	// 3. Poll 2 -> Scanned
+	// 3. 第 2 次轮询 -> 已扫码
 	res2, err := coord.PollStatus(ctx, qrSession.QRCodeKey)
 	if err != nil || res2.State != QRStateScanned {
 		t.Fatalf("expected scanned, got: %+v, err: %v", res2, err)
 	}
 
-	// 4. Poll 3 -> Confirmed & Auto-Registered!
+	// 4. 第 3 次轮询 -> 确认成功并自动完成登记
 	res3, err := coord.PollStatus(ctx, qrSession.QRCodeKey)
 	if err != nil || res3.State != QRStateConfirmed {
 		t.Fatalf("expected confirmed, got: %+v, err: %v", res3, err)
@@ -126,7 +126,7 @@ func TestBilibiliQRLoginCoordinator_FullFlow(t *testing.T) {
 		t.Fatalf("expected registered account info, got: %+v", res3.AccountInfo)
 	}
 
-	// Verify Account is in CredentialService and client has cookie
+	// 验证账号已存入 CredentialService 且 Client 携带有效 Cookie
 	acc, err := service.GetAccount("bilibili", "987654321")
 	if err != nil || acc.Name != "BiliMaster" {
 		t.Fatalf("account not found in service: %+v, err: %v", acc, err)
