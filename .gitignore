@@ -1,0 +1,10 @@
+/bin/
+/build/
+/dist/
+*.exe
+*.test
+*.out
+
+notes/
+tasks/
+AGENTS.md
