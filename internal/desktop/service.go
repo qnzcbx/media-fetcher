@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sync"
 	"time"
 
 	"github.com/egoist/mygo"
@@ -24,7 +25,9 @@ type DesktopService struct {
 	win         *mygo.Window
 
 	// 下载状态
+	downloadMu     sync.Mutex
 	cancelDownload context.CancelFunc
+	downloadWait   chan struct{}
 }
 
 func NewDesktopService() (*DesktopService, error) {
@@ -192,13 +195,28 @@ type ProgressInfo struct {
 }
 
 func (s *DesktopService) StartDownload(params DownloadParams) error {
+	s.downloadMu.Lock()
 	if s.cancelDownload != nil {
 		s.cancelDownload()
 	}
+	waitChan := s.downloadWait
+	s.downloadMu.Unlock()
+
+	// 阻塞等待上一个任务真正结束，消除数据竞争
+	if waitChan != nil {
+		<-waitChan
+	}
+
 	ctx, cancel := context.WithCancel(context.Background())
+
+	s.downloadMu.Lock()
 	s.cancelDownload = cancel
+	done := make(chan struct{})
+	s.downloadWait = done
+	s.downloadMu.Unlock()
 
 	go func() {
+		defer close(done)
 		err := s.doDownload(ctx, params)
 		if err != nil {
 			ProgressEvent.Emit(s.win, ProgressInfo{Stage: "error", Message: err.Error()})
@@ -208,6 +226,8 @@ func (s *DesktopService) StartDownload(params DownloadParams) error {
 }
 
 func (s *DesktopService) CancelDownload() {
+	s.downloadMu.Lock()
+	defer s.downloadMu.Unlock()
 	if s.cancelDownload != nil {
 		s.cancelDownload()
 		s.cancelDownload = nil
@@ -289,16 +309,27 @@ func (s *DesktopService) doDownload(ctx context.Context, params DownloadParams) 
 	var targetVideo *extractor.VideoStream
 	var targetAudio *extractor.AudioStream
 
-	for _, vs := range media.VideoStreams {
-		if vs.ID == params.VideoID && vs.Codec == params.VideoCodec {
-			targetVideo = &vs
-			break
+	if params.VideoID >= 0 {
+		for _, vs := range media.VideoStreams {
+			if vs.ID == params.VideoID && vs.Codec == params.VideoCodec {
+				targetVideo = &vs
+				break
+			}
+		}
+		if targetVideo == nil {
+			return fmt.Errorf("所选视频画质或编码已失效，请重新解析")
 		}
 	}
-	for _, as := range media.AudioStreams {
-		if as.ID == params.AudioID {
-			targetAudio = &as
-			break
+
+	if params.AudioID >= 0 {
+		for _, as := range media.AudioStreams {
+			if as.ID == params.AudioID {
+				targetAudio = &as
+				break
+			}
+		}
+		if targetAudio == nil {
+			return fmt.Errorf("所选音质已失效，请重新解析")
 		}
 	}
 

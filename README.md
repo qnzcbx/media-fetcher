@@ -78,12 +78,11 @@ media-fetcher/
 
 2. **生产构建打包**
    ```bash
-   pnpm run build
-   go build -o ./bin/media-fetcher-app.exe ./cmd/media-fetcher-app
+   pnpm run mygo:build
    ```
    构建后执行：
    ```bash
-   ./bin/media-fetcher-app.exe
+   ./build/media-fetcher.exe
    ```
 
 ### CLI 命令行工具
