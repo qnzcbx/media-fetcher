@@ -40,6 +40,7 @@ export interface MediaInfoResponse {
   id: string;
   title: string;
   author: string;
+  coverUrl: string;
   isAnonymous: boolean;
   usedAccountId: string;
   videoStreams: VideoStream[];

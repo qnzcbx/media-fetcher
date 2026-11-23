@@ -1,252 +1,355 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
-import { DesktopService, events } from './mygo'
-import { Search, Image, User, Download, CheckCircle } from '@lucide/vue'
-import QrcodeVue from 'qrcode.vue'
+import { ref, onMounted } from "vue";
+import { DesktopService, events } from "./mygo";
+import { Image, Download, CheckCircle, Key, ClipboardPaste } from "@lucide/vue";
+import QrcodeVue from "qrcode.vue";
 
 // --- 类型定义 ---
-type VideoStream = { id: number, quality_label: string, codec: string, bandwidth: number, need_auth: boolean }
-type SafeAccount = { siteId: string, accountId: string, name: string, avatarUrl: string, status: string, isActive: boolean }
+type VideoStream = {
+  id: number;
+  quality_label: string;
+  codec: string;
+  bandwidth: number;
+  need_auth: boolean;
+};
+type SafeAccount = {
+  siteId: string;
+  accountId: string;
+  name: string;
+  avatarUrl: string;
+  status: string;
+  isActive: boolean;
+};
 
 // --- 状态定义 ---
-const url = ref('')
-const isParsing = ref(false)
-const parseError = ref('')
-const mediaInfo = ref<any>(null)
-const accounts = ref<SafeAccount[]>([])
+const url = ref("");
+const isParsing = ref(false);
+const parseError = ref("");
+const mediaInfo = ref<any>(null);
+const accounts = ref<SafeAccount[]>([]);
 
 // 画质选择
-const selectedVideoID = ref(-1)
-const selectedVideoCodec = ref('')
-const selectedAudioID = ref(-1)
+const selectedVideoID = ref(-1);
+const selectedVideoCodec = ref("");
+const selectedAudioID = ref(-1);
 
 // 鉴权状态
-const showAuthModal = ref(false)
-const qrUrl = ref('')
-const qrStatus = ref('')
+const showAuthManage = ref(false);
+const showAuthModal = ref(false);
+const qrUrl = ref("");
+const qrStatus = ref("");
 
 // 下载状态
-const isDownloading = ref(false)
-const progressInfo = ref<any>(null)
+const isDownloading = ref(false);
+const progressInfo = ref<any>(null);
 
 // 加载本地账号
 const fetchAccounts = async () => {
   try {
-    accounts.value = await DesktopService.getAccounts() || []
+    accounts.value = (await DesktopService.getAccounts()) || [];
   } catch (e) {
-    console.error(e)
+    console.error(e);
   }
-}
+};
 
 onMounted(() => {
-  fetchAccounts()
+  fetchAccounts();
 
   events.progress.on((info: any) => {
-    progressInfo.value = info
-    if (info.stage === 'done' || info.stage === 'error') {
+    progressInfo.value = info;
+    if (info.stage === "done" || info.stage === "error") {
       setTimeout(() => {
-        isDownloading.value = false
-      }, 5000)
+        isDownloading.value = false;
+      }, 5000);
     }
-  })
-})
+  });
+});
+
+const extractSupportedURL = (text: string): string => {
+  const match = text.match(/(https?:\/\/[^\s]+)/);
+  if (!match) return "";
+  let extracted = match[0];
+  // 移除尾部的中文标点或常见闭合符号
+  extracted = extracted.replace(/[\]】）"'\s]+$/, "");
+
+  if (
+    extracted.includes("bilibili.com") ||
+    extracted.includes("b23.tv") ||
+    extracted.includes("lofter.com")
+  ) {
+    return extracted;
+  }
+  return "";
+};
+
+const pasteFromClipboard = async () => {
+  try {
+    const text = await navigator.clipboard.readText();
+    if (text) {
+      url.value = text;
+    }
+  } catch (err) {
+    parseError.value = "无法读取剪贴板，请手动粘贴";
+  }
+};
 
 const doParse = async () => {
-  if (!url.value.trim() || isParsing.value) return
-  isParsing.value = true
-  parseError.value = ''
-  mediaInfo.value = null
-  selectedVideoID.value = -1
-  selectedVideoCodec.value = ''
-  selectedAudioID.value = -1
+  if (!url.value.trim() || isParsing.value) return;
+  const parsedUrl = extractSupportedURL(url.value.trim());
+  if (!parsedUrl) {
+    parseError.value = "未找到支持的链接 (Bilibili / LOFTER)";
+    return;
+  }
+  url.value = parsedUrl;
+
+  isParsing.value = true;
+  parseError.value = "";
+  mediaInfo.value = null;
+  selectedVideoID.value = -1;
+  selectedVideoCodec.value = "";
+  selectedAudioID.value = -1;
 
   try {
-    let accId = ''
-    if (accounts.value.length > 0) {
-      const active = accounts.value.find(a => a.isActive)
-      if (active) accId = active.accountId
+    let siteId = "";
+    if (parsedUrl.includes("bilibili.com") || parsedUrl.includes("b23.tv")) siteId = "bilibili";
+    else if (parsedUrl.includes("lofter.com")) siteId = "lofter";
+
+    let accId = "";
+    if (siteId) {
+      const active = accounts.value.find((a) => a.isActive && a.siteId === siteId);
+      if (active) accId = active.accountId;
     }
 
-    const res = await DesktopService.extract(url.value, accId)
-    mediaInfo.value = res
+    const res = await DesktopService.extract(parsedUrl, accId);
+    mediaInfo.value = res;
 
     // 默认选用第一个（也是唯一提炼出的最佳）画质
-    const uniques = getUniqueVideoStreams()
+    const uniques = getUniqueVideoStreams();
     if (uniques.length > 0) {
-       selectedVideoID.value = uniques[0].stream.id
-       selectedVideoCodec.value = uniques[0].stream.codec
+      selectedVideoID.value = uniques[0].stream.id;
+      selectedVideoCodec.value = uniques[0].stream.codec;
     }
 
     // 默认选中最高可用音质
     if (res.audioStreams && res.audioStreams.length > 0) {
-       // 通过降低排序或者寻最高码率，假设这里最高带宽在头部
-       const bestAudio = [...res.audioStreams].sort((a, b) => b.bandwidth - a.bandwidth)[0]
-       selectedAudioID.value = bestAudio.id
+      // 通过降低排序或者寻最高码率，假设这里最高带宽在头部
+      const bestAudio = [...res.audioStreams].sort((a, b) => b.bandwidth - a.bandwidth)[0];
+      selectedAudioID.value = bestAudio.id;
     }
   } catch (e: any) {
-    parseError.value = e.message || '解析失败'
+    parseError.value = e.message || "解析失败";
   } finally {
-    isParsing.value = false
+    isParsing.value = false;
   }
-}
+};
 
 const startDownload = async () => {
-  isDownloading.value = true
-  progressInfo.value = { stage: 'starting', message: '准备下载...' }
+  isDownloading.value = true;
+  progressInfo.value = { stage: "starting", message: "准备下载..." };
 
-  let accId = ''
-  const active = accounts.value.find(a => a.isActive)
-  if (active) accId = active.accountId
+  let accId = "";
+  if (mediaInfo.value && mediaInfo.value.siteId) {
+    const active = accounts.value.find((a) => a.isActive && a.siteId === mediaInfo.value.siteId);
+    if (active) accId = active.accountId;
+  }
 
   try {
     await DesktopService.startDownload({
       URL: url.value,
       AccountID: accId,
-      OutputDir: '', // 后端默认回退到系统 Downloads 目录
+      OutputDir: "", // 后端默认回退到系统 Downloads 目录
       VideoID: mediaInfo.value.images?.length ? -1 : selectedVideoID.value,
-      VideoCodec: mediaInfo.value.images?.length ? '' : selectedVideoCodec.value,
+      VideoCodec: mediaInfo.value.images?.length ? "" : selectedVideoCodec.value,
       AudioID: mediaInfo.value.images?.length ? -1 : selectedAudioID.value,
-    })
+    });
   } catch (e: any) {
-    console.error(e)
-    progressInfo.value = { stage: 'error', message: e.message }
+    console.error(e);
+    progressInfo.value = { stage: "error", message: e.message };
   }
-}
+};
 
 const cancelDownload = async () => {
-  await DesktopService.cancelDownload()
-  isDownloading.value = false
-  progressInfo.value = null
-}
+  await DesktopService.cancelDownload();
+  isDownloading.value = false;
+  progressInfo.value = null;
+};
 
 const loginBilibili = async () => {
-  showAuthModal.value = true
-  qrStatus.value = '申请二维码中...'
-  qrUrl.value = ''
+  showAuthManage.value = false;
+  showAuthModal.value = true;
+  qrStatus.value = "申请二维码中...";
+  qrUrl.value = "";
 
   try {
-    const res = await DesktopService.generateBiliQRCode()
-    qrUrl.value = res.url
-    qrStatus.value = '请使用手机 Bilibili App 扫描二维码'
+    const res = await DesktopService.generateBiliQRCode();
+    qrUrl.value = res.url;
+    qrStatus.value = "请使用手机 Bilibili App 扫描二维码";
 
     // 轮询状态
-    pollQRCode(res.qrcodeKey)
+    pollQRCode(res.qrcodeKey);
   } catch (e: any) {
-    qrStatus.value = '错误: ' + e.message
+    qrStatus.value = "错误: " + e.message;
   }
-}
+};
 
 const pollQRCode = async (key: string) => {
-  if (!showAuthModal.value) return
+  if (!showAuthModal.value) return;
   try {
-    const res = await DesktopService.pollBiliQRCode(key)
-    qrStatus.value = res.message
-    if (res.state === 'confirmed') {
-      await fetchAccounts()
-      setTimeout(() => { showAuthModal.value = false }, 1500)
-    } else if (res.state === 'expired' || res.state === 'failed') {
+    const res = await DesktopService.pollBiliQRCode(key);
+    qrStatus.value = res.message;
+    if (res.state === "confirmed") {
+      await fetchAccounts();
+      setTimeout(() => {
+        showAuthModal.value = false;
+      }, 1500);
+    } else if (res.state === "expired" || res.state === "failed") {
       // 终止轮询
     } else {
-      setTimeout(() => pollQRCode(key), 3000)
+      setTimeout(() => pollQRCode(key), 3000);
     }
   } catch (e) {
-    qrStatus.value = '轮询错误'
-    setTimeout(() => pollQRCode(key), 3000)
+    qrStatus.value = "轮询错误";
+    setTimeout(() => pollQRCode(key), 3000);
   }
-}
+};
 
 // 精简提取唯一的视频分辨率
 const getUniqueVideoStreams = () => {
-  if (!mediaInfo.value || !mediaInfo.value.videoStreams) return []
-  const streams: VideoStream[] = mediaInfo.value.videoStreams
-  const unique = []
-  const seen = new Set()
+  if (!mediaInfo.value || !mediaInfo.value.videoStreams) return [];
+  const streams: VideoStream[] = mediaInfo.value.videoStreams;
+  const unique = [];
+  const seen = new Set();
   for (let i = 0; i < streams.length; i++) {
     // 简洁模式下：对同一分辨率只展示质量最好的编码（AVC）
-    const label = streams[i].quality_label
+    const label = streams[i].quality_label;
     if (!seen.has(label)) {
-      seen.add(label)
-      unique.push({ index: i, stream: streams[i] })
+      seen.add(label);
+      unique.push({ index: i, stream: streams[i] });
     }
   }
-  return unique
-}
+  return unique;
+};
 </script>
 
 <template>
   <div class="app-container">
     <header class="topbar">
-      <div class="logo">
-        <Download class="icon" /> Media Fetcher
-      </div>
+      <div class="logo"></div>
       <div class="actions">
-        <button @click="loginBilibili" class="icon-btn">
-          <User class="icon" />
-          <span v-if="accounts.length > 0">{{ accounts.find(a => a.isActive)?.name || '已登录' }}</span>
-          <span v-else>登录账号</span>
+        <button @click="showAuthManage = true" class="icon-btn" title="凭证管理">
+          <Key class="icon" />
         </button>
       </div>
     </header>
 
     <main class="main-content" :class="{ 'has-result': mediaInfo }">
       <div class="hero" v-if="!mediaInfo">
-        <h1>下载，从一个链接开始。</h1>
-        <p>粘贴视频或图片链接，选择你想要的清晰度。</p>
+        <h1>Media Fetcher</h1>
       </div>
 
       <form class="search-box" @submit.prevent="doParse">
-        <Search class="search-icon" />
-        <input
-          v-model="url"
-          type="url"
-          placeholder="https://www.bilibili.com/video/..."
-          required
-        />
-        <button type="submit" :disabled="isParsing">
-          {{ isParsing ? '解析中...' : '解析' }}
-        </button>
+        <input v-model="url" type="text" placeholder="你的链接" required />
+        <div class="icon-btn-box">
+          <button
+            type="button"
+            @click="pasteFromClipboard"
+            class="icon-btn-small"
+            title="粘贴"
+            :disabled="isParsing"
+          >
+            <ClipboardPaste class="icon" />
+          </button>
+          <button type="submit" class="icon-btn-small primary" title="下载" :disabled="isParsing">
+            <Download class="icon" />
+          </button>
+        </div>
       </form>
-      <div class="support-text" v-if="!mediaInfo">Bilibili / LOFTER</div>
+      <div class="support-text" v-if="!mediaInfo">Bilibili &nbsp;&nbsp; LOFTER</div>
       <div class="error-msg" v-if="parseError">{{ parseError }}</div>
 
       <!-- Result View -->
       <transition name="fade">
         <div class="result-view" v-if="mediaInfo">
-          <div class="media-card">
-            <div class="media-info">
+          <div class="media-card" style="display: flex; gap: 20px">
+            <div
+              class="media-cover"
+              v-if="mediaInfo.coverUrl || (mediaInfo.images && mediaInfo.images.length > 0)"
+            >
+              <img
+                :src="mediaInfo.coverUrl || mediaInfo.images[0].url"
+                style="
+                  width: 160px;
+                  height: 90px;
+                  object-fit: cover;
+                  border-radius: 8px;
+                  border: 1px solid var(--border);
+                "
+              />
+            </div>
+            <div class="media-info" style="flex: 1">
               <h2>{{ mediaInfo.title }}</h2>
               <div class="meta">
                 <span class="tag">{{ mediaInfo.siteId }}</span>
                 <span v-if="mediaInfo.author">{{ mediaInfo.author }}</span>
+                <span
+                  v-if="
+                    mediaInfo.images &&
+                    mediaInfo.images.length > 0 &&
+                    (!mediaInfo.videoStreams || mediaInfo.videoStreams.length === 0)
+                  "
+                >
+                  共 {{ mediaInfo.images.length }} 张图片
+                </span>
               </div>
             </div>
           </div>
 
           <!-- Videos -->
-          <div v-if="mediaInfo.videoStreams && mediaInfo.videoStreams.length > 0" class="options-section">
+          <div
+            v-if="mediaInfo.videoStreams && mediaInfo.videoStreams.length > 0"
+            class="options-section"
+          >
             <h3>选择画质</h3>
             <div class="quality-grid">
               <div
                 v-for="item in getUniqueVideoStreams()"
                 :key="item.index"
                 class="quality-card"
-                :class="{ active: selectedVideoID === item.stream.id && selectedVideoCodec === item.stream.codec }"
-                @click="selectedVideoID = item.stream.id; selectedVideoCodec = item.stream.codec"
+                :class="{
+                  active:
+                    selectedVideoID === item.stream.id && selectedVideoCodec === item.stream.codec,
+                }"
+                @click="
+                  selectedVideoID = item.stream.id;
+                  selectedVideoCodec = item.stream.codec;
+                "
               >
                 <div class="q-title">{{ item.stream.quality_label }}</div>
                 <div class="q-sub">{{ item.stream.codec }}</div>
-                <div class="check" v-if="selectedVideoID === item.stream.id && selectedVideoCodec === item.stream.codec">
-                  <CheckCircle :size="16"/>
+                <div
+                  class="check"
+                  v-if="
+                    selectedVideoID === item.stream.id && selectedVideoCodec === item.stream.codec
+                  "
+                >
+                  <CheckCircle :size="16" />
                 </div>
               </div>
             </div>
           </div>
 
           <!-- Images -->
-          <div v-if="mediaInfo.images && mediaInfo.images.length > 0 && (!mediaInfo.videoStreams || mediaInfo.videoStreams.length===0)" class="options-section">
+          <div
+            v-if="
+              mediaInfo.images &&
+              mediaInfo.images.length > 0 &&
+              (!mediaInfo.videoStreams || mediaInfo.videoStreams.length === 0)
+            "
+            class="options-section"
+          >
             <h3>图片列表 (共 {{ mediaInfo.images.length }} 张)</h3>
             <div class="image-grid">
-              <div v-for="img in mediaInfo.images.slice(0,6)" :key="img.index" class="img-preview">
+              <div v-for="img in mediaInfo.images.slice(0, 6)" :key="img.index" class="img-preview">
                 <Image class="img-icon" />
                 <span>{{ img.index }}</span>
               </div>
@@ -261,7 +364,11 @@ const getUniqueVideoStreams = () => {
             <div class="dir-info">保存至系统默认下载目录</div>
             <button class="btn-primary" @click="startDownload">
               <Download class="icon" />
-              {{ mediaInfo.images?.length && (!mediaInfo.videoStreams?.length) ? '下载全部图片' : '下载视频' }}
+              {{
+                mediaInfo.images?.length && !mediaInfo.videoStreams?.length
+                  ? "下载全部图片"
+                  : "下载视频"
+              }}
             </button>
           </div>
 
@@ -272,18 +379,80 @@ const getUniqueVideoStreams = () => {
               <span class="status-badge" :class="progressInfo.stage">{{ progressInfo.stage }}</span>
             </div>
             <div class="task-msg">{{ progressInfo.message }}</div>
-            <div class="progress-bar-container" v-if="progressInfo.stage !== 'done' && progressInfo.stage !== 'error'">
-              <div class="progress-bar" :style="{ width: progressInfo.total > 0 ? (progressInfo.downloaded / progressInfo.total * 100) + '%' : '100%' }" :class="{ 'indeterminate': progressInfo.total <= 0 }"></div>
+            <div
+              class="progress-bar-container"
+              v-if="progressInfo.stage !== 'done' && progressInfo.stage !== 'error'"
+            >
+              <div
+                class="progress-bar"
+                :style="{
+                  width:
+                    progressInfo.total > 0
+                      ? (progressInfo.downloaded / progressInfo.total) * 100 + '%'
+                      : '100%',
+                }"
+                :class="{ indeterminate: progressInfo.total <= 0 }"
+              ></div>
             </div>
             <div class="task-actions">
-              <button v-if="progressInfo.stage !== 'done' && progressInfo.stage !== 'error'" @click="cancelDownload" class="btn-cancel">取消</button>
-              <button v-if="progressInfo.stage === 'error'" @click="startDownload" class="btn-primary">重试</button>
+              <button
+                v-if="progressInfo.stage !== 'done' && progressInfo.stage !== 'error'"
+                @click="cancelDownload"
+                class="btn-cancel"
+              >
+                取消
+              </button>
+              <button
+                v-if="progressInfo.stage === 'error'"
+                @click="startDownload"
+                class="btn-primary"
+              >
+                重试
+              </button>
             </div>
           </div>
-
         </div>
       </transition>
     </main>
+
+    <!-- Auth Manage Modal -->
+    <div class="modal-overlay" v-if="showAuthManage">
+      <div class="modal">
+        <h3>凭证管理</h3>
+
+        <div class="auth-card">
+          <h4>Bilibili</h4>
+          <div
+            v-if="accounts.find((a) => a.isActive && a.siteId === 'bilibili')"
+            class="auth-status active"
+          >
+            {{ accounts.find((a) => a.isActive && a.siteId === "bilibili")?.name }} (已登录)
+          </div>
+          <div v-else class="auth-action">
+            <button
+              class="btn-primary"
+              style="width: 100%; justify-content: center"
+              @click="loginBilibili"
+            >
+              登录 Bilibili
+            </button>
+          </div>
+        </div>
+
+        <div class="auth-card">
+          <h4>LOFTER</h4>
+          <div class="auth-status anonymous">匿名模式 (当前未配置凭证)</div>
+        </div>
+
+        <button
+          class="btn-cancel"
+          style="margin-top: 24px; width: 100%"
+          @click="showAuthManage = false"
+        >
+          关闭
+        </button>
+      </div>
+    </div>
 
     <!-- Auth Modal -->
     <div class="modal-overlay" v-if="showAuthModal">
@@ -302,19 +471,23 @@ const getUniqueVideoStreams = () => {
 
 <style>
 :root {
-  --bg-color: #F8F9FA;
-  --card-bg: #FFFFFF;
-  --input-bg: #F1F3F4;
-  --primary: #8ED7EB;
-  --primary-hover: #72C7DF;
+  --bg-color: #f8f9fa;
+  --card-bg: #ffffff;
+  --input-bg: #f1f3f4;
+  --primary: #8ed7eb;
+  --primary-hover: #72c7df;
   --text-main: #202427;
-  --text-sub: #858B90;
-  --border: #E0E4E8;
+  --text-sub: #858b90;
+  --border: #e0e4e8;
 }
 
 body {
   margin: 0;
-  font-family: "Microsoft YaHei", -apple-system, BlinkMacSystemFont, sans-serif;
+  font-family:
+    "Microsoft YaHei",
+    -apple-system,
+    BlinkMacSystemFont,
+    sans-serif;
   background-color: var(--bg-color);
   color: var(--text-main);
 }
@@ -331,8 +504,6 @@ body {
   justify-content: space-between;
   align-items: center;
   padding: 16px 24px;
-  background: var(--card-bg);
-  box-shadow: 0 1px 2px rgba(0,0,0,0.05);
   z-index: 10;
   -webkit-app-region: drag;
 }
@@ -366,6 +537,37 @@ body {
   background: var(--input-bg);
 }
 
+.icon-btn-box {
+  display: flex;
+  gap: 6px;
+}
+
+.icon-btn-small {
+  background: transparent;
+  border: none;
+  color: var(--text-sub);
+  padding: 8px;
+  cursor: pointer;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  transition: all 0.2s;
+}
+
+.icon-btn-small:hover:not(:disabled) {
+  background: var(--input-bg);
+  color: var(--text-main);
+}
+
+.icon-btn-small.primary {
+  color: var(--primary-hover);
+}
+
+.icon-btn-small.primary:hover:not(:disabled) {
+  background: var(--primary);
+  color: #000;
+}
+
 .main-content {
   flex: 1;
   padding: 40px 20px;
@@ -387,9 +589,12 @@ body {
 }
 
 .hero h1 {
-  font-size: 32px;
+  font-size: 40px;
+  font-family: "Georgia", "Times New Roman", serif;
   margin: 0 0 12px 0;
-  font-weight: 600;
+  font-weight: normal;
+  color: var(--text-main);
+  letter-spacing: -0.5px;
 }
 
 .hero p {
@@ -403,7 +608,7 @@ body {
   background: var(--card-bg);
   border-radius: 12px;
   padding: 8px;
-  box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
   align-items: center;
   border: 1px solid var(--border);
   transition: box-shadow 0.3s;
@@ -457,10 +662,10 @@ body {
 }
 
 .error-msg {
-  color: #E53E3E;
+  color: #e53e3e;
   text-align: center;
   margin-top: 16px;
-  background: #FED7D7;
+  background: #fed7d7;
   padding: 10px;
   border-radius: 8px;
 }
@@ -532,7 +737,7 @@ body {
 
 .quality-card.active {
   border-color: var(--primary);
-  background: #F0FAFD;
+  background: #f0fafd;
 }
 
 .q-title {
@@ -614,7 +819,7 @@ body {
 }
 
 .btn-cancel {
-  background: #FFF;
+  background: #fff;
   border: 1px solid var(--border);
   padding: 8px 16px;
   border-radius: 6px;
@@ -657,9 +862,18 @@ body {
   text-transform: capitalize;
 }
 
-.status-badge.done { background: #C6F6D5; color: #22543D; }
-.status-badge.error { background: #FED7D7; color: #822727; }
-.status-badge.muxing { background: #FEEBC8; color: #7B341E; }
+.status-badge.done {
+  background: #c6f6d5;
+  color: #22543d;
+}
+.status-badge.error {
+  background: #fed7d7;
+  color: #822727;
+}
+.status-badge.muxing {
+  background: #feebc8;
+  color: #7b341e;
+}
 
 .task-msg {
   color: var(--text-sub);
@@ -687,8 +901,12 @@ body {
 }
 
 @keyframes indeterminate {
-  0% { transform: translateX(-100%); }
-  100% { transform: translateX(330%); }
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(330%);
+  }
 }
 
 .task-actions {
@@ -699,8 +917,11 @@ body {
 /* Modal */
 .modal-overlay {
   position: fixed;
-  top: 0; left: 0; right: 0; bottom: 0;
-  background: rgba(0,0,0,0.4);
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.4);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -713,7 +934,7 @@ body {
   border-radius: 16px;
   width: 320px;
   text-align: center;
-  box-shadow: 0 8px 24px rgba(0,0,0,0.1);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.1);
 }
 
 .modal h3 {
@@ -748,6 +969,26 @@ body {
   color: var(--text-sub);
   font-size: 14px;
   margin-bottom: 24px;
+}
+
+.auth-card {
+  text-align: left;
+  background: var(--input-bg);
+  padding: 16px;
+  border-radius: 8px;
+  margin-bottom: 16px;
+}
+.auth-card h4 {
+  margin: 0 0 12px 0;
+  font-size: 15px;
+}
+.auth-status {
+  font-size: 14px;
+  color: var(--text-sub);
+}
+.auth-status.active {
+  color: #2b6cb0;
+  font-weight: 500;
 }
 
 /* Transitions */

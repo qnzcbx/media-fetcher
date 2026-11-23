@@ -59,6 +59,7 @@ type MediaInfoResponse struct {
 	ID            string                  `json:"id"`
 	Title         string                  `json:"title"`
 	Author        string                  `json:"author"`
+	CoverURL      string                  `json:"coverUrl"`
 	IsAnonymous   bool                    `json:"isAnonymous"`
 	UsedAccountID string                  `json:"usedAccountId"`
 	VideoStreams  []extractor.VideoStream `json:"videoStreams"`
@@ -88,6 +89,7 @@ func (s *DesktopService) Extract(urlStr string, accountID string) (MediaInfoResp
 		ID:            media.ID,
 		Title:         media.Title,
 		Author:        media.Author,
+		CoverURL:      media.CoverURL,
 		IsAnonymous:   media.IsAnonymous,
 		UsedAccountID: media.UsedAccountID,
 		VideoStreams:  media.VideoStreams,
