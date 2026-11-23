@@ -61,9 +61,32 @@ media-fetcher/
 
 ### Requirements
 
-- Go（版本要求以 `go.mod` 为准）
+- Go 1.27+
 - Windows 10/11（当前主要开发与验证平台）
+- Node.js (带有 pnpm 或 bun 等包管理器，用于前端开发与构建)
 - FFmpeg（音视频混流功能需要）
+
+### Desktop App (MyGo GUI)
+
+本工具包含基于 MyGo 的图形桌面客户端：
+
+1. **开发调试 (热重载前端与启动桌面)**
+   ```bash
+   pnpm install
+   pnpm run mygo:dev
+   ```
+
+2. **生产构建打包**
+   ```bash
+   pnpm run build
+   go build -o ./bin/media-fetcher-app.exe ./cmd/media-fetcher-app
+   ```
+   构建后执行：
+   ```bash
+   ./bin/media-fetcher-app.exe
+   ```
+
+### CLI 命令行工具
 
 ### Build
 

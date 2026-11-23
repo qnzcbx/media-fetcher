@@ -5,6 +5,11 @@
 *.test
 *.out
 
+node_modules/
+.env
+.env.local
+.env.*.local
+
 .claude
 notes/
 tasks/
