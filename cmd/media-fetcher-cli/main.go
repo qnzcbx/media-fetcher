@@ -13,11 +13,14 @@ import (
 	"strings"
 	"time"
 
+	"github.com/mdp/qrterminal/v3"
+
 	"media-fetcher/core/auth"
 	"media-fetcher/core/downloader"
 	"media-fetcher/core/extractor"
 	"media-fetcher/core/extractor/bilibili"
 	"media-fetcher/core/extractor/lofter"
+	"media-fetcher/pkg/fsutil"
 	"media-fetcher/pkg/vault"
 )
 
@@ -170,6 +173,10 @@ func handleAccounts(args []string) {
 }
 
 func handleBiliQR(args []string) {
+	fs := flag.NewFlagSet("bili-qr", flag.ExitOnError)
+	debug := fs.Bool("debug", false, "输出调试信息")
+	_ = fs.Parse(args)
+
 	v := vault.NewDefaultVault()
 	credService, err := auth.NewCredentialService("", v)
 	if err != nil {
@@ -189,7 +196,8 @@ func handleBiliQR(args []string) {
 
 	fmt.Println("已成功申请 Bilibili 扫码登录:")
 	fmt.Printf("  扫码链接: %s\n", sess.URL)
-	fmt.Println("提示: 请使用手机 Bilibili 客户端扫描上方链接二维码。")
+	fmt.Println("  请使用 Bilibili 手机客户端扫描以下二维码：")
+	qrterminal.GenerateHalfBlock(sess.URL, qrterminal.L, os.Stdout)
 
 	ctxPoll, cancelPoll := context.WithCancel(context.Background())
 	defer cancelPoll()
@@ -210,7 +218,7 @@ func handleBiliQR(args []string) {
 	for {
 		select {
 		case <-ctxPoll.Done():
-			fmt.Println("已退出登录流程。")
+			fmt.Println("\n已退出登录流程。")
 			return
 		case <-ticker.C:
 			res, err := coord.PollStatus(ctxPoll, sess.QRCodeKey)
@@ -218,10 +226,13 @@ func handleBiliQR(args []string) {
 				fmt.Printf("\n轮询状态错误: %v", err)
 				continue
 			}
+			if *debug {
+				fmt.Printf("\n[DEBUG] RawCode: %d, State: %s, Message: %s\n", res.RawCode, res.State, res.Message)
+			}
 			if res.State != lastState {
 				fmt.Printf("\n[%s] %s", res.State, res.Message)
 				lastState = res.State
-			} else if res.State == auth.QRStateWaiting {
+			} else if res.State == auth.QRStateWaiting && !*debug {
 				fmt.Print(".")
 			}
 
@@ -307,7 +318,13 @@ func handleDownload(args []string) {
 		fmt.Println("使用匿名态下载")
 	}
 
-	d := downloader.New(client)
+	var downloadClient *http.Client
+	if client != nil {
+		c := *client
+		c.Timeout = 0
+		downloadClient = &c
+	}
+	d := downloader.New(downloadClient)
 
 	// LOFTER 图片下载逻辑
 	if len(media.Images) > 0 && len(media.VideoStreams) == 0 && len(media.AudioStreams) == 0 {
@@ -454,8 +471,11 @@ func handleDownload(args []string) {
 		}
 	} else if downloadedVideo != "" {
 		finalOut := filepath.Join(*outputDir, fmt.Sprintf("%s.mp4", title))
-		os.Rename(downloadedVideo, finalOut)
-		fmt.Printf("下载完成: %s\n", finalOut)
+		if err := fsutil.PublishFile(downloadedVideo, finalOut, fsutil.StrategyReplace); err != nil {
+			fmt.Fprintf(os.Stderr, "文件发布失败: %v\n", err)
+		} else {
+			fmt.Printf("下载完成: %s\n", finalOut)
+		}
 	} else if downloadedAudio != "" {
 		fmt.Printf("下载完成: %s\n", downloadedAudio)
 	} else {

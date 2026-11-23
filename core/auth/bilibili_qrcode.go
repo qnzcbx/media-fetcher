@@ -110,6 +110,7 @@ type PollResult struct {
 	State       QRLoginState `json:"state"`
 	Message     string       `json:"message"`
 	AccountInfo *SafeAccount `json:"account_info,omitempty"`
+	RawCode     int          `json:"raw_code"`
 }
 
 // PollStatus 查询哔哩哔哩服务端以获取当前二维码会话的状态。
@@ -158,11 +159,11 @@ func (c *BilibiliQRLoginCoordinator) PollStatus(ctx context.Context, qrcodeKey s
 
 	switch code {
 	case 86101:
-		return &PollResult{State: QRStateWaiting, Message: "等待扫码"}, nil
+		return &PollResult{State: QRStateWaiting, Message: "等待扫码", RawCode: code}, nil
 	case 86090:
-		return &PollResult{State: QRStateScanned, Message: "已扫码，请在手机端确认"}, nil
+		return &PollResult{State: QRStateScanned, Message: "已扫码，请在手机端确认", RawCode: code}, nil
 	case 86038:
-		return &PollResult{State: QRStateExpired, Message: "二维码已过期"}, nil
+		return &PollResult{State: QRStateExpired, Message: "二维码已过期", RawCode: code}, nil
 	case 0:
 		// 扫码确认成功，收集 Cookie 凭据
 		cookies := resp.Cookies()
@@ -239,12 +240,14 @@ func (c *BilibiliQRLoginCoordinator) PollStatus(ctx context.Context, qrcodeKey s
 			State:       QRStateConfirmed,
 			Message:     "登录成功",
 			AccountInfo: &safe,
+			RawCode:     code,
 		}, nil
 
 	default:
 		return &PollResult{
 			State:   QRStateFailed,
 			Message: fmt.Sprintf("扫码失败 (code=%d: %s)", code, reply.Data.Message),
+			RawCode: code,
 		}, fmt.Errorf("bilibili qr login failed: code=%d", code)
 	}
 }
