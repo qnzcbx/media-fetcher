@@ -5,7 +5,11 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"net/http"
 	"os"
+	"os/signal"
+	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -27,6 +31,8 @@ func main() {
 	switch cmd {
 	case "extract":
 		handleExtract(os.Args[2:])
+	case "download":
+		handleDownload(os.Args[2:])
 	case "accounts":
 		handleAccounts(os.Args[2:])
 	case "bili-qr":
@@ -45,9 +51,17 @@ func printUsage() {
 
 用法:
   media-fetcher-cli extract [-account ID] <URL>     解析媒体资源信息（音画轨道/图片列表）
+  media-fetcher-cli download [选项] <URL>           下载媒体资源
   media-fetcher-cli accounts                        查看已保存的站点账号列表（脱敏）
   media-fetcher-cli bili-qr                         申请 Bilibili 扫码登录会话
   media-fetcher-cli version                         查看版本信息`)
+}
+
+func getRegistry(credService *auth.CredentialService) *extractor.Registry {
+	reg := extractor.NewRegistry()
+	reg.Register(bilibili.New(credService))
+	reg.Register(lofter.New(credService))
+	return reg
 }
 
 func handleExtract(args []string) {
@@ -69,10 +83,7 @@ func handleExtract(args []string) {
 		return
 	}
 
-	reg := extractor.NewRegistry()
-	reg.Register(bilibili.New(credService))
-	reg.Register(lofter.New(credService))
-
+	reg := getRegistry(credService)
 	ext, err := reg.Find(targetURL)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "匹配站点解析器失败: %v\n", err)
@@ -103,27 +114,26 @@ func handleExtract(args []string) {
 
 	if len(media.VideoStreams) > 0 {
 		fmt.Printf("\n可用视频流 (%d 条):\n", len(media.VideoStreams))
-		for _, v := range media.VideoStreams {
+		for i, v := range media.VideoStreams {
 			authNote := ""
 			if v.NeedAuth {
-				authNote = " [需登录/大会员]"
+				authNote = " [需登录]"
 			}
-			fmt.Printf("  - [%s] %dx%d (codec=%s, 码率=%d bps)%s\n",
-				v.QualityLabel, v.Width, v.Height, v.Codec, v.Bandwidth, authNote)
+			fmt.Printf("  [%d] %s %dx%d (codec=%s, 码率=%d bps)%s\n",
+				i, v.QualityLabel, v.Width, v.Height, v.Codec, v.Bandwidth, authNote)
 		}
 	}
 
 	if len(media.AudioStreams) > 0 {
 		fmt.Printf("\n可用音轨 (%d 条):\n", len(media.AudioStreams))
-		for _, a := range media.AudioStreams {
-			fmt.Printf("  - [%s] (codec=%s, 码率=%d bps)\n", a.Quality, a.Codec, a.Bandwidth)
+		for i, a := range media.AudioStreams {
+			fmt.Printf("  [%d] %s (codec=%s, 码率=%d bps)\n", i, a.Quality, a.Codec, a.Bandwidth)
 		}
 	}
 
 	if len(media.Images) > 0 {
 		fmt.Printf("\n可用图片列表 (%d 张):\n", len(media.Images))
 		for _, img := range media.Images {
-			// URL 脱敏显示前缀
 			preview := img.URL
 			if len(preview) > 80 {
 				preview = preview[:77] + "..."
@@ -179,8 +189,278 @@ func handleBiliQR(args []string) {
 
 	fmt.Println("已成功申请 Bilibili 扫码登录:")
 	fmt.Printf("  扫码链接: %s\n", sess.URL)
-	fmt.Printf("  会话密钥: %s\n", sess.QRCodeKey)
 	fmt.Println("提示: 请使用手机 Bilibili 客户端扫描上方链接二维码。")
+
+	ctxPoll, cancelPoll := context.WithCancel(context.Background())
+	defer cancelPoll()
+
+	go func() {
+		c := make(chan os.Signal, 1)
+		signal.Notify(c, os.Interrupt)
+		<-c
+		fmt.Println("\n检测到中断信号，正在取消...")
+		cancelPoll()
+	}()
+
+	fmt.Println("\n开始轮询扫码状态...")
+	ticker := time.NewTicker(3 * time.Second)
+	defer ticker.Stop()
+
+	lastState := auth.QRStateWaiting
+	for {
+		select {
+		case <-ctxPoll.Done():
+			fmt.Println("已退出登录流程。")
+			return
+		case <-ticker.C:
+			res, err := coord.PollStatus(ctxPoll, sess.QRCodeKey)
+			if err != nil {
+				fmt.Printf("\n轮询状态错误: %v", err)
+				continue
+			}
+			if res.State != lastState {
+				fmt.Printf("\n[%s] %s", res.State, res.Message)
+				lastState = res.State
+			} else if res.State == auth.QRStateWaiting {
+				fmt.Print(".")
+			}
+
+			if res.State == auth.QRStateConfirmed {
+				if res.AccountInfo != nil {
+					fmt.Printf("\n登录成功！已保存账号: %s (ID: %s)\n", res.AccountInfo.Name, res.AccountInfo.AccountID)
+				} else {
+					fmt.Println("\n登录成功！凭证已保存。")
+				}
+				return
+			} else if res.State == auth.QRStateExpired {
+				fmt.Println("\n请重新运行命令申请新的二维码。")
+				return
+			} else if res.State == auth.QRStateFailed {
+				fmt.Println("\n扫码流程失败，请重试。")
+				return
+			}
+		}
+	}
+}
+
+func handleDownload(args []string) {
+	fs := flag.NewFlagSet("download", flag.ExitOnError)
+	outputDir := fs.String("output", ".", "输出目录")
+	accountID := fs.String("account", "", "指定登录账号ID")
+	videoIdx := fs.Int("video", -1, "选择视频流序号")
+	audioIdx := fs.Int("audio", -1, "选择音频流序号")
+	audioOnly := fs.Bool("audio-only", false, "仅下载音频")
+	requireAuth := fs.Bool("require-auth", false, "必须使用登录账号")
+	_ = fs.Parse(args)
+
+	if fs.NArg() < 1 {
+		fmt.Fprintln(os.Stderr, "错误: 请提供需要下载的链接")
+		return
+	}
+	targetURL := fs.Arg(0)
+
+	v := vault.NewDefaultVault()
+	credService, err := auth.NewCredentialService("", v)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "初始化凭证服务失败: %v\n", err)
+		return
+	}
+
+	reg := getRegistry(credService)
+	ext, err := reg.Find(targetURL)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "匹配站点解析器失败: %v\n", err)
+		return
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	go func() {
+		c := make(chan os.Signal, 1)
+		signal.Notify(c, os.Interrupt)
+		<-c
+		fmt.Println("\n收到中断信号，取消下载...")
+		cancel()
+	}()
+
+	fmt.Printf("正在解析资源: %s\n", targetURL)
+	media, err := ext.Extract(ctx, targetURL, extractor.ExtractOptions{
+		AccountID:   *accountID,
+		RequireAuth: *requireAuth,
+	})
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "解析失败: %v\n", err)
+		return
+	}
+
+	var client *http.Client
+	if media.UsedAccountID != "" {
+		client, err = credService.GetClient(media.SiteID, media.UsedAccountID)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "获取凭证客户端失败: %v\n", err)
+			return
+		}
+		fmt.Printf("使用账号 %s 登录态下载\n", media.UsedAccountID)
+	} else {
+		client = credService.GetAnonymousClient(media.SiteID)
+		fmt.Println("使用匿名态下载")
+	}
+
+	d := downloader.New(client)
+
+	// LOFTER 图片下载逻辑
+	if len(media.Images) > 0 && len(media.VideoStreams) == 0 && len(media.AudioStreams) == 0 {
+		fmt.Printf("发现 %d 张图片，准备下载...\n", len(media.Images))
+		for _, img := range media.Images {
+			filename := fmt.Sprintf("%s_%03d%s", media.ID, img.Index, filepath.Ext(img.URL))
+			opts := downloader.DownloadOptions{
+				OutputDir: *outputDir,
+				Filename:  filename,
+			}
+			fmt.Printf("下载图片 %s ... ", filename)
+			_, err := d.Download(ctx, client, img.URL, opts)
+			if err != nil {
+				fmt.Printf("失败: %v\n", err)
+			} else {
+				fmt.Println("成功")
+			}
+		}
+		return
+	}
+
+	// 视频/音频选择逻辑
+	vIdx := *videoIdx
+	aIdx := *audioIdx
+
+	if !*audioOnly && len(media.VideoStreams) > 0 && vIdx < 0 {
+		fmt.Printf("可用视频流:\n")
+		for i, vs := range media.VideoStreams {
+			fmt.Printf("  [%d] %s (codec=%s)\n", i, vs.QualityLabel, vs.Codec)
+		}
+		fmt.Print("请选择视频流序号 (直接回车默认 0, 输入 -1 放弃): ")
+		var input string
+		fmt.Scanln(&input)
+		if input == "" {
+			vIdx = 0
+		} else {
+			vIdx, _ = strconv.Atoi(input)
+		}
+	}
+
+	if len(media.AudioStreams) > 0 && aIdx < 0 {
+		fmt.Printf("可用音轨:\n")
+		for i, as := range media.AudioStreams {
+			fmt.Printf("  [%d] %s (codec=%s)\n", i, as.Quality, as.Codec)
+		}
+		fmt.Print("请选择音轨序号 (直接回车默认 0, 输入 -1 放弃): ")
+		var input string
+		fmt.Scanln(&input)
+		if input == "" {
+			aIdx = 0
+		} else {
+			aIdx, _ = strconv.Atoi(input)
+		}
+	}
+
+	var downloadedVideo string
+	var downloadedAudio string
+
+	title := downloader.SanitizeFilename(media.Title)
+	if title == "media_download" {
+		title = media.ID
+	}
+
+	if !*audioOnly && vIdx >= 0 && vIdx < len(media.VideoStreams) {
+		vs := media.VideoStreams[vIdx]
+		opts := downloader.DownloadOptions{
+			OutputDir: *outputDir,
+			Filename:  fmt.Sprintf("%s.video.tmp", title),
+			Referer:   "https://www.bilibili.com", // 如果需要可以从 MediaInfo 扩展
+			OnProgress: func(downloaded, total int64) {
+			},
+		}
+		fmt.Printf("正在下载视频: %s\n", vs.QualityLabel)
+
+		var err error
+		downloadedVideo, err = d.Download(ctx, client, vs.URL, opts)
+		if err != nil {
+			if len(vs.BackupURLs) > 0 {
+				fmt.Printf("视频主链接下载失败: %v, 尝试备用链接...\n", err)
+				for _, backupURL := range vs.BackupURLs {
+					downloadedVideo, err = d.Download(ctx, client, backupURL, opts)
+					if err == nil {
+						break
+					}
+				}
+			}
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "视频下载失败: %v\n", err)
+				return
+			}
+		}
+	}
+
+	if aIdx >= 0 && aIdx < len(media.AudioStreams) {
+		as := media.AudioStreams[aIdx]
+		ext := ".m4a"
+		if strings.Contains(as.Codec, "flac") {
+			ext = ".flac"
+		}
+		opts := downloader.DownloadOptions{
+			OutputDir: *outputDir,
+			Filename:  fmt.Sprintf("%s.audio%s", title, ext),
+			Referer:   "https://www.bilibili.com",
+		}
+		if !*audioOnly && downloadedVideo != "" {
+			opts.Filename = fmt.Sprintf("%s.audio.tmp", title)
+		}
+
+		fmt.Printf("正在下载音轨: %s\n", as.Quality)
+		var err error
+		downloadedAudio, err = d.Download(ctx, client, as.URL, opts)
+		if err != nil {
+			if len(as.BackupURLs) > 0 {
+				fmt.Printf("音频主链接下载失败: %v, 尝试备用链接...\n", err)
+				for _, backupURL := range as.BackupURLs {
+					downloadedAudio, err = d.Download(ctx, client, backupURL, opts)
+					if err == nil {
+						break
+					}
+				}
+			}
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "音频下载失败: %v\n", err)
+				return
+			}
+		}
+	}
+
+	if downloadedVideo != "" && downloadedAudio != "" {
+		fmt.Println("正在合并音视频...")
+		ffmpegPath, err := downloader.FindFFmpeg()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "合并失败: 未找到 FFmpeg (请配置环境变量或将其放置于系统目录中): %v\n", err)
+			return
+		}
+		finalOut := filepath.Join(*outputDir, fmt.Sprintf("%s.mp4", title))
+		err = downloader.MuxVideoAudio(ctx, ffmpegPath, downloadedVideo, downloadedAudio, finalOut)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "合并失败: %v\n", err)
+		} else {
+			fmt.Printf("合并完成: %s\n", finalOut)
+			os.Remove(downloadedVideo)
+			os.Remove(downloadedAudio)
+		}
+	} else if downloadedVideo != "" {
+		finalOut := filepath.Join(*outputDir, fmt.Sprintf("%s.mp4", title))
+		os.Rename(downloadedVideo, finalOut)
+		fmt.Printf("下载完成: %s\n", finalOut)
+	} else if downloadedAudio != "" {
+		fmt.Printf("下载完成: %s\n", downloadedAudio)
+	} else {
+		fmt.Println("未下载任何内容。")
+	}
 }
 
 var _ = json.Marshal

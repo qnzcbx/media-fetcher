@@ -285,7 +285,9 @@ func (s *CredentialService) RegisterOrUpdateAccount(acc *Account, jar *cookiejar
 		if old := s.jars[key]; old != nil && old != jar {
 			old.Revoke()
 			delete(s.jars, key)
-			s.accounts[key].Status = StatusExpired
+			if existing, ok := s.accounts[key]; ok && existing != acc {
+				existing.Status = StatusExpired
+			}
 		}
 		credPath := s.credFilePath(acc.SiteID, acc.AccountID)
 		if err := jar.Save(credPath, s.vault); err != nil {
