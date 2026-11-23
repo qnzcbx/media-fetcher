@@ -330,13 +330,25 @@ func handleDownload(args []string) {
 	if len(media.Images) > 0 && len(media.VideoStreams) == 0 && len(media.AudioStreams) == 0 {
 		fmt.Printf("发现 %d 张图片，准备下载...\n", len(media.Images))
 		for _, img := range media.Images {
-			filename := fmt.Sprintf("%s_%03d%s", media.ID, img.Index, filepath.Ext(img.URL))
+			filename := fmt.Sprintf("%s_%s", media.ID, img.Filename)
+			if img.Filename == "" {
+				filename = fmt.Sprintf("%s_%03d.jpg", media.ID, img.Index)
+			}
 			opts := downloader.DownloadOptions{
 				OutputDir: *outputDir,
 				Filename:  filename,
 			}
 			fmt.Printf("下载图片 %s ... ", filename)
-			_, err := d.Download(ctx, nil, img.URL, opts)
+			var err error
+			_, err = d.Download(ctx, nil, img.URL, opts)
+			if err != nil && len(img.BackupURLs) > 0 {
+				for _, backupURL := range img.BackupURLs {
+					_, err = d.Download(ctx, nil, backupURL, opts)
+					if err == nil {
+						break
+					}
+				}
+			}
 			if err != nil {
 				fmt.Printf("失败: %v\n", err)
 			} else {

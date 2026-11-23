@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted } from "vue";
 import { DesktopService, events } from "./mygo";
-import { Image, Download, CheckCircle, Key, ClipboardPaste } from "@lucide/vue";
+import { Download, CheckCircle, Key, ClipboardPaste, X } from "@lucide/vue";
 import QrcodeVue from "qrcode.vue";
 
 // --- 类型定义 ---
@@ -28,10 +28,16 @@ const parseError = ref("");
 const mediaInfo = ref<any>(null);
 const accounts = ref<SafeAccount[]>([]);
 
+// 预览图加载
+const previewMap = ref<Record<string, string>>({});
+
 // 画质选择
 const selectedVideoID = ref(-1);
 const selectedVideoCodec = ref("");
 const selectedAudioID = ref(-1);
+
+// 图片选择
+const selectedImages = ref<number[]>([]);
 
 // 鉴权状态
 const showAuthManage = ref(false);
@@ -93,6 +99,28 @@ const pasteFromClipboard = async () => {
   }
 };
 
+const getPreview = async (imgUrl: string) => {
+  if (previewMap.value[imgUrl]) return;
+  try {
+    const b64 = await DesktopService.fetchPreviewBase64(imgUrl, mediaInfo.value?.siteId || "");
+    previewMap.value[imgUrl] = b64;
+  } catch (e) {
+    console.error("Failed to fetch preview for", imgUrl, e);
+  }
+};
+
+const loadPreviews = async () => {
+  if (!mediaInfo.value) return;
+  if (mediaInfo.value.coverUrl) {
+    getPreview(mediaInfo.value.coverUrl);
+  }
+  if (mediaInfo.value.images) {
+    for (const img of mediaInfo.value.images) {
+      getPreview(img.url);
+    }
+  }
+};
+
 const doParse = async () => {
   if (!url.value.trim() || isParsing.value) return;
   const parsedUrl = extractSupportedURL(url.value.trim());
@@ -108,6 +136,7 @@ const doParse = async () => {
   selectedVideoID.value = -1;
   selectedVideoCodec.value = "";
   selectedAudioID.value = -1;
+  selectedImages.value = [];
 
   try {
     let siteId = "";
@@ -132,10 +161,16 @@ const doParse = async () => {
 
     // 默认选中最高可用音质
     if (res.audioStreams && res.audioStreams.length > 0) {
-      // 通过降低排序或者寻最高码率，假设这里最高带宽在头部
       const bestAudio = [...res.audioStreams].sort((a, b) => b.bandwidth - a.bandwidth)[0];
       selectedAudioID.value = bestAudio.id;
     }
+
+    // 默认选中全部图片
+    if (res.images && res.images.length > 0) {
+      selectedImages.value = res.images.map((img: any) => img.index);
+    }
+
+    loadPreviews();
   } catch (e: any) {
     parseError.value = e.message || "解析失败";
   } finally {
@@ -153,14 +188,18 @@ const startDownload = async () => {
     if (active) accId = active.accountId;
   }
 
+  const currentMedia = mediaInfo.value;
+  mediaInfo.value = null; // 关闭资源选择弹窗
+
   try {
     await DesktopService.startDownload({
       URL: url.value,
       AccountID: accId,
       OutputDir: "", // 后端默认回退到系统 Downloads 目录
-      VideoID: mediaInfo.value.images?.length ? -1 : selectedVideoID.value,
-      VideoCodec: mediaInfo.value.images?.length ? "" : selectedVideoCodec.value,
-      AudioID: mediaInfo.value.images?.length ? -1 : selectedAudioID.value,
+      VideoID: currentMedia.images?.length ? -1 : selectedVideoID.value,
+      VideoCodec: currentMedia.images?.length ? "" : selectedVideoCodec.value,
+      AudioID: currentMedia.images?.length ? -1 : selectedAudioID.value,
+      SelectedImage: currentMedia.images?.length ? selectedImages.value : [],
     });
   } catch (e: any) {
     console.error(e);
@@ -220,7 +259,6 @@ const getUniqueVideoStreams = () => {
   const unique = [];
   const seen = new Set();
   for (let i = 0; i < streams.length; i++) {
-    // 简洁模式下：对同一分辨率只展示质量最好的编码（AVC）
     const label = streams[i].quality_label;
     if (!seen.has(label)) {
       seen.add(label);
@@ -228,6 +266,22 @@ const getUniqueVideoStreams = () => {
     }
   }
   return unique;
+};
+
+const toggleImage = (idx: number) => {
+  if (selectedImages.value.includes(idx)) {
+    selectedImages.value = selectedImages.value.filter((i) => i !== idx);
+  } else {
+    selectedImages.value.push(idx);
+  }
+};
+
+const toggleAllImages = () => {
+  if (selectedImages.value.length === mediaInfo.value.images.length) {
+    selectedImages.value = [];
+  } else {
+    selectedImages.value = mediaInfo.value.images.map((img: any) => img.index);
+  }
 };
 </script>
 
@@ -242,8 +296,8 @@ const getUniqueVideoStreams = () => {
       </div>
     </header>
 
-    <main class="main-content" :class="{ 'has-result': mediaInfo }">
-      <div class="hero" v-if="!mediaInfo">
+    <main class="main-content">
+      <div class="hero">
         <h1>Media Fetcher</h1>
       </div>
 
@@ -264,57 +318,61 @@ const getUniqueVideoStreams = () => {
           </button>
         </div>
       </form>
-      <div class="support-text" v-if="!mediaInfo">Bilibili &nbsp;&nbsp; LOFTER</div>
+      <div class="support-text">Bilibili &nbsp;&nbsp; LOFTER</div>
       <div class="error-msg" v-if="parseError">{{ parseError }}</div>
 
-      <!-- Result View -->
-      <transition name="fade">
-        <div class="result-view" v-if="mediaInfo">
-          <div class="media-card" style="display: flex; gap: 20px">
-            <div
-              class="media-cover"
-              v-if="mediaInfo.coverUrl || (mediaInfo.images && mediaInfo.images.length > 0)"
-            >
-              <img
-                :src="mediaInfo.coverUrl || mediaInfo.images[0].url"
-                style="
-                  width: 160px;
-                  height: 90px;
-                  object-fit: cover;
-                  border-radius: 8px;
-                  border: 1px solid var(--border);
-                "
-              />
-            </div>
-            <div class="media-info" style="flex: 1">
-              <h2>{{ mediaInfo.title }}</h2>
-              <div class="meta">
-                <span class="tag">{{ mediaInfo.siteId }}</span>
-                <span v-if="mediaInfo.author">{{ mediaInfo.author }}</span>
-                <span
-                  v-if="
-                    mediaInfo.images &&
-                    mediaInfo.images.length > 0 &&
-                    (!mediaInfo.videoStreams || mediaInfo.videoStreams.length === 0)
-                  "
-                >
-                  共 {{ mediaInfo.images.length }} 张图片
-                </span>
-              </div>
-            </div>
+      <!-- 我的下载：预留展位 -->
+      <div class="my-downloads" v-if="isDownloading && progressInfo">
+        <h3>我的下载 ></h3>
+        <div class="download-task">
+          <div class="task-header">
+            <h4>下载任务</h4>
+            <span class="status-badge" :class="progressInfo.stage">{{ progressInfo.stage }}</span>
           </div>
-
-          <!-- Videos -->
+          <div class="task-msg">{{ progressInfo.message }}</div>
           <div
-            v-if="mediaInfo.videoStreams && mediaInfo.videoStreams.length > 0"
-            class="options-section"
+            class="progress-bar-container"
+            v-if="progressInfo.stage !== 'done' && progressInfo.stage !== 'error'"
           >
-            <h3>选择画质</h3>
-            <div class="quality-grid">
+            <div
+              class="progress-bar"
+              :style="{
+                width:
+                  progressInfo.total > 0
+                    ? (progressInfo.downloaded / progressInfo.total) * 100 + '%'
+                    : '100%',
+              }"
+              :class="{ indeterminate: progressInfo.total <= 0 }"
+            ></div>
+          </div>
+          <div class="task-actions">
+            <button
+              v-if="progressInfo.stage !== 'done' && progressInfo.stage !== 'error'"
+              @click="cancelDownload"
+              class="btn-cancel"
+            >
+              取消
+            </button>
+          </div>
+        </div>
+      </div>
+    </main>
+
+    <!-- Resource Selection Modal -->
+    <div class="modal-overlay" v-if="mediaInfo">
+      <div class="resource-modal">
+        <div class="rmodal-header">
+          <h3>选择资源</h3>
+          <button class="icon-btn" @click="mediaInfo = null"><X class="icon" /></button>
+        </div>
+        <div class="rmodal-body">
+          <!-- Videos -->
+          <div v-if="mediaInfo.videoStreams && mediaInfo.videoStreams.length > 0">
+            <div class="video-grid">
               <div
                 v-for="item in getUniqueVideoStreams()"
                 :key="item.index"
-                class="quality-card"
+                class="video-card"
                 :class="{
                   active:
                     selectedVideoID === item.stream.id && selectedVideoCodec === item.stream.codec,
@@ -324,17 +382,32 @@ const getUniqueVideoStreams = () => {
                   selectedVideoCodec = item.stream.codec;
                 "
               >
-                <div class="q-title">{{ item.stream.quality_label }}</div>
-                <div class="q-sub">{{ item.stream.codec }}</div>
-                <div
-                  class="check"
-                  v-if="
-                    selectedVideoID === item.stream.id && selectedVideoCodec === item.stream.codec
-                  "
-                >
-                  <CheckCircle :size="16" />
+                <div class="video-cover">
+                  <img
+                    v-if="previewMap[mediaInfo.coverUrl]"
+                    :src="previewMap[mediaInfo.coverUrl]"
+                  />
+                  <div v-else class="preview-placeholder">封面加载中...</div>
+                  <div
+                    class="check"
+                    v-if="
+                      selectedVideoID === item.stream.id && selectedVideoCodec === item.stream.codec
+                    "
+                  >
+                    <CheckCircle :size="20" />
+                  </div>
                 </div>
+                <div class="video-quality">{{ item.stream.quality_label }}</div>
               </div>
+            </div>
+
+            <div class="audio-select-container">
+              <span>音质</span>
+              <select class="audio-select" v-model="selectedAudioID">
+                <option v-for="as in mediaInfo.audioStreams" :key="as.id" :value="as.id">
+                  {{ as.quality }}
+                </option>
+              </select>
             </div>
           </div>
 
@@ -345,79 +418,52 @@ const getUniqueVideoStreams = () => {
               mediaInfo.images.length > 0 &&
               (!mediaInfo.videoStreams || mediaInfo.videoStreams.length === 0)
             "
-            class="options-section"
           >
-            <h3>图片列表 (共 {{ mediaInfo.images.length }} 张)</h3>
-            <div class="image-grid">
-              <div v-for="img in mediaInfo.images.slice(0, 6)" :key="img.index" class="img-preview">
-                <Image class="img-icon" />
-                <span>{{ img.index }}</span>
-              </div>
-              <div v-if="mediaInfo.images.length > 6" class="img-preview more">
-                +{{ mediaInfo.images.length - 6 }}
-              </div>
+            <div class="image-header">
+              <label class="custom-checkbox" @click="toggleAllImages">
+                <input
+                  type="checkbox"
+                  :checked="selectedImages.length === mediaInfo.images.length"
+                />
+                <span>全部 ({{ selectedImages.length }}/{{ mediaInfo.images.length }})</span>
+              </label>
             </div>
-          </div>
-
-          <!-- Download Action Bar -->
-          <div class="download-bar" v-if="!isDownloading">
-            <div class="dir-info">保存至系统默认下载目录</div>
-            <button class="btn-primary" @click="startDownload">
-              <Download class="icon" />
-              {{
-                mediaInfo.images?.length && !mediaInfo.videoStreams?.length
-                  ? "下载全部图片"
-                  : "下载视频"
-              }}
-            </button>
-          </div>
-
-          <!-- Downloading State -->
-          <div class="download-task" v-if="isDownloading && progressInfo">
-            <div class="task-header">
-              <h4>{{ mediaInfo.title }}</h4>
-              <span class="status-badge" :class="progressInfo.stage">{{ progressInfo.stage }}</span>
-            </div>
-            <div class="task-msg">{{ progressInfo.message }}</div>
-            <div
-              class="progress-bar-container"
-              v-if="progressInfo.stage !== 'done' && progressInfo.stage !== 'error'"
-            >
+            <div class="video-grid">
               <div
-                class="progress-bar"
-                :style="{
-                  width:
-                    progressInfo.total > 0
-                      ? (progressInfo.downloaded / progressInfo.total) * 100 + '%'
-                      : '100%',
-                }"
-                :class="{ indeterminate: progressInfo.total <= 0 }"
-              ></div>
-            </div>
-            <div class="task-actions">
-              <button
-                v-if="progressInfo.stage !== 'done' && progressInfo.stage !== 'error'"
-                @click="cancelDownload"
-                class="btn-cancel"
+                v-for="img in mediaInfo.images"
+                :key="img.index"
+                class="video-card"
+                :class="{ active: selectedImages.includes(img.index) }"
+                @click="toggleImage(img.index)"
               >
-                取消
-              </button>
-              <button
-                v-if="progressInfo.stage === 'error'"
-                @click="startDownload"
-                class="btn-primary"
-              >
-                重试
-              </button>
+                <div class="video-cover image-cover">
+                  <img v-if="previewMap[img.url]" :src="previewMap[img.url]" />
+                  <div v-else class="preview-placeholder">加载中...</div>
+                  <div class="check" v-if="selectedImages.includes(img.index)">
+                    <CheckCircle :size="20" />
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
         </div>
-      </transition>
-    </main>
+
+        <div class="rmodal-footer">
+          <button
+            class="btn-primary"
+            style="width: 100%; justify-content: center"
+            @click="startDownload"
+            :disabled="selectedImages.length === 0 && !mediaInfo.videoStreams?.length"
+          >
+            下载
+          </button>
+        </div>
+      </div>
+    </div>
 
     <!-- Auth Manage Modal -->
     <div class="modal-overlay" v-if="showAuthManage">
-      <div class="modal">
+      <div class="modal auth-modal">
         <h3>凭证管理</h3>
 
         <div class="auth-card">
@@ -454,9 +500,9 @@ const getUniqueVideoStreams = () => {
       </div>
     </div>
 
-    <!-- Auth Modal -->
+    <!-- Auth QR Modal -->
     <div class="modal-overlay" v-if="showAuthModal">
-      <div class="modal">
+      <div class="modal auth-modal">
         <h3>登录 Bilibili</h3>
         <div class="qr-container">
           <qrcode-vue v-if="qrUrl" :value="qrUrl" :size="200" level="M" render-as="svg" />
@@ -470,8 +516,21 @@ const getUniqueVideoStreams = () => {
 </template>
 
 <style>
+@font-face {
+  font-family: "Parisienne";
+  src: url("./assets/fonts/Parisienne.ttf") format("truetype");
+  font-weight: normal;
+  font-style: normal;
+}
+@font-face {
+  font-family: "Pinyon Script";
+  src: url("./assets/fonts/PinyonScript.ttf") format("truetype");
+  font-weight: normal;
+  font-style: normal;
+}
+
 :root {
-  --bg-color: #f8f9fa;
+  --bg-color: #fafafa;
   --card-bg: #ffffff;
   --input-bg: #f1f3f4;
   --primary: #8ed7eb;
@@ -570,17 +629,13 @@ body {
 
 .main-content {
   flex: 1;
-  padding: 40px 20px;
-  max-width: 800px;
+  padding: 80px 20px 40px;
+  max-width: 720px;
   margin: 0 auto;
   width: 100%;
   display: flex;
   flex-direction: column;
   transition: all 0.3s ease;
-}
-
-.main-content.has-result {
-  padding-top: 20px;
 }
 
 .hero {
@@ -589,39 +644,29 @@ body {
 }
 
 .hero h1 {
-  font-size: 40px;
-  font-family: "Georgia", "Times New Roman", serif;
+  font-size: 64px;
+  font-family: "Parisienne", "Georgia", "Times New Roman", cursive;
   margin: 0 0 12px 0;
   font-weight: normal;
   color: var(--text-main);
-  letter-spacing: -0.5px;
-}
-
-.hero p {
-  color: var(--text-sub);
-  margin: 0;
-  font-size: 16px;
 }
 
 .search-box {
   display: flex;
-  background: var(--card-bg);
+  background: var(--input-bg);
   border-radius: 12px;
-  padding: 8px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+  padding: 8px 16px;
   align-items: center;
-  border: 1px solid var(--border);
-  transition: box-shadow 0.3s;
+  border: 1px solid transparent;
+  transition:
+    border-color 0.3s,
+    background 0.3s;
 }
 
 .search-box:focus-within {
-  box-shadow: 0 4px 16px rgba(142, 215, 235, 0.2);
+  background: var(--card-bg);
   border-color: var(--primary);
-}
-
-.search-icon {
-  color: var(--text-sub);
-  margin: 0 12px;
+  box-shadow: 0 4px 16px rgba(142, 215, 235, 0.1);
 }
 
 .search-box input {
@@ -633,32 +678,12 @@ body {
   padding: 8px 0;
 }
 
-.search-box button {
-  background: var(--primary);
-  color: #000;
-  border: none;
-  padding: 10px 24px;
-  border-radius: 8px;
-  font-weight: 600;
-  font-size: 15px;
-  cursor: pointer;
-  transition: background 0.2s;
-}
-
-.search-box button:hover:not(:disabled) {
-  background: var(--primary-hover);
-}
-
-.search-box button:disabled {
-  opacity: 0.7;
-  cursor: not-allowed;
-}
-
 .support-text {
   text-align: center;
   color: var(--text-sub);
-  font-size: 13px;
+  font-size: 14px;
   margin-top: 16px;
+  letter-spacing: 1px;
 }
 
 .error-msg {
@@ -670,133 +695,15 @@ body {
   border-radius: 8px;
 }
 
-.result-view {
-  margin-top: 32px;
-  display: flex;
-  flex-direction: column;
-  gap: 24px;
-  flex: 1;
-  overflow-y: auto;
-  padding-bottom: 40px;
+.my-downloads {
+  margin-top: 64px;
 }
 
-.media-card {
-  background: var(--card-bg);
-  border-radius: 12px;
-  padding: 20px;
-  border: 1px solid var(--border);
-}
-
-.media-info h2 {
-  margin: 0 0 12px 0;
-  font-size: 18px;
-  line-height: 1.4;
-}
-
-.meta {
-  display: flex;
-  gap: 12px;
-  color: var(--text-sub);
-  font-size: 14px;
-  align-items: center;
-}
-
-.tag {
-  background: var(--input-bg);
-  padding: 4px 8px;
-  border-radius: 4px;
-  font-size: 12px;
-  font-weight: 600;
-}
-
-.options-section h3 {
+.my-downloads h3 {
   font-size: 16px;
-  margin: 0 0 16px 0;
-  font-weight: 600;
-}
-
-.quality-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
-  gap: 16px;
-}
-
-.quality-card {
-  background: var(--card-bg);
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  padding: 16px;
-  cursor: pointer;
-  position: relative;
-  transition: all 0.2s;
-}
-
-.quality-card:hover {
-  border-color: var(--primary);
-}
-
-.quality-card.active {
-  border-color: var(--primary);
-  background: #f0fafd;
-}
-
-.q-title {
-  font-weight: 600;
-  font-size: 15px;
-  margin-bottom: 4px;
-}
-
-.q-sub {
+  font-weight: normal;
   color: var(--text-sub);
-  font-size: 12px;
-}
-
-.check {
-  position: absolute;
-  top: 16px;
-  right: 16px;
-  color: var(--primary);
-}
-
-.image-grid {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 12px;
-}
-
-.img-preview {
-  width: 80px;
-  height: 80px;
-  background: var(--input-bg);
-  border-radius: 8px;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  color: var(--text-sub);
-  font-size: 12px;
-  border: 1px solid var(--border);
-}
-
-.img-preview.more {
-  font-size: 18px;
-  font-weight: bold;
-}
-
-.download-bar {
-  background: var(--card-bg);
-  border-radius: 12px;
-  padding: 20px;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  border: 1px solid var(--border);
-  margin-top: auto;
-}
-
-.dir-info {
-  color: var(--text-sub);
-  font-size: 14px;
+  margin-bottom: 16px;
 }
 
 .btn-primary {
@@ -814,8 +721,13 @@ body {
   transition: background 0.2s;
 }
 
-.btn-primary:hover {
+.btn-primary:hover:not(:disabled) {
   background: var(--primary-hover);
+}
+
+.btn-primary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .btn-cancel {
@@ -834,8 +746,7 @@ body {
   background: var(--card-bg);
   border-radius: 12px;
   padding: 20px;
-  border: 1px solid var(--primary);
-  box-shadow: 0 4px 12px rgba(142, 215, 235, 0.15);
+  border: 1px solid var(--border);
 }
 
 .task-header {
@@ -848,10 +759,6 @@ body {
 .task-header h4 {
   margin: 0;
   font-size: 16px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  max-width: 70%;
 }
 
 .status-badge {
@@ -914,7 +821,7 @@ body {
   justify-content: flex-end;
 }
 
-/* Modal */
+/* Modals */
 .modal-overlay {
   position: fixed;
   top: 0;
@@ -928,7 +835,7 @@ body {
   z-index: 100;
 }
 
-.modal {
+.modal.auth-modal {
   background: var(--card-bg);
   padding: 32px;
   border-radius: 16px;
@@ -991,13 +898,139 @@ body {
   font-weight: 500;
 }
 
-/* Transitions */
-.fade-enter-active,
-.fade-leave-active {
-  transition: opacity 0.3s ease;
+/* Resource Selection Modal */
+.resource-modal {
+  background: var(--card-bg);
+  border-radius: 16px;
+  width: 680px;
+  max-width: 90vw;
+  max-height: 85vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.1);
 }
-.fade-enter-from,
-.fade-leave-to {
-  opacity: 0;
+
+.rmodal-header {
+  padding: 20px 24px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 1px solid var(--border);
+}
+
+.rmodal-header h3 {
+  margin: 0;
+  font-size: 18px;
+}
+
+.rmodal-body {
+  padding: 24px;
+  overflow-y: auto;
+  flex: 1;
+}
+
+.rmodal-footer {
+  padding: 20px 24px;
+  border-top: 1px solid var(--border);
+}
+
+.video-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.video-card {
+  background: var(--card-bg);
+  border-radius: 8px;
+  border: 2px solid transparent;
+  cursor: pointer;
+  transition: all 0.2s;
+  overflow: hidden;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+}
+
+.video-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+.video-card.active {
+  border-color: var(--primary);
+}
+
+.video-cover {
+  width: 100%;
+  aspect-ratio: 16/9;
+  background: var(--input-bg);
+  position: relative;
+}
+
+.video-cover.image-cover {
+  aspect-ratio: 1;
+}
+
+.video-cover img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.preview-placeholder {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-sub);
+  font-size: 12px;
+}
+
+.video-card .check {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  color: var(--primary);
+  background: #fff;
+  border-radius: 50%;
+  display: flex;
+}
+
+.video-quality {
+  padding: 12px;
+  text-align: center;
+  font-weight: 500;
+}
+
+.audio-select-container {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: var(--input-bg);
+  padding: 12px 16px;
+  border-radius: 8px;
+}
+
+.audio-select {
+  border: none;
+  background: transparent;
+  font-size: 14px;
+  outline: none;
+  flex: 1;
+  color: var(--text-main);
+  cursor: pointer;
+}
+
+.image-header {
+  margin-bottom: 16px;
+}
+
+.custom-checkbox {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  user-select: none;
 }
 </style>

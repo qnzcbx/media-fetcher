@@ -36,9 +36,10 @@ type AudioStream struct {
 
 // ImageItem 描述独立静态图片资源（例如 Lofter 图片博文图片项）。
 type ImageItem struct {
-	Index    int    `json:"index"`
-	URL      string `json:"url"`
-	Filename string `json:"filename,omitempty"`
+	Index      int      `json:"index"`
+	URL        string   `json:"url"`
+	BackupURLs []string `json:"backup_urls,omitempty"`
+	Filename   string   `json:"filename,omitempty"`
 }
 
 // MediaInfo 统一且结构化地承载自各站点解析出的媒体资源元数据与流描述符。

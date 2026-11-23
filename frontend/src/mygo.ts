@@ -26,11 +26,13 @@ export interface DownloadParams {
   VideoID: number;
   VideoCodec: string;
   AudioID: number;
+  SelectedImage: number[];
 }
 
 export interface ImageItem {
   index: number;
   url: string;
+  backup_urls?: string[];
   filename?: string;
 }
 
@@ -95,6 +97,7 @@ export interface Window {}
 export const DesktopService = {
   cancelDownload: bind<[], void>("DesktopService.CancelDownload", () => []),
   extract: bind<[string, string], MediaInfoResponse>("DesktopService.Extract", (urlStr: string, accountID: string) => [urlStr, accountID]),
+  fetchPreviewBase64: bind<[string, string], string>("DesktopService.FetchPreviewBase64", (imgUrl: string, siteId: string) => [imgUrl, siteId]),
   generateBiliQRCode: bind<[], BiliQRSession>("DesktopService.GenerateBiliQRCode", () => []),
   getAccounts: bind<[], SafeAccount[]>("DesktopService.GetAccounts", () => []),
   pollBiliQRCode: bind<[string], PollResult>("DesktopService.PollBiliQRCode", (qrcodeKey: string) => [qrcodeKey]),

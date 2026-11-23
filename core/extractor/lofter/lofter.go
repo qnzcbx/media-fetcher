@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"path"
 	"regexp"
 	"strconv"
 	"strings"
@@ -218,11 +219,35 @@ func (e *LofterExtractor) Extract(ctx context.Context, rawURL string, opt extrac
 		SourceURL:     rawURL,
 	}
 
-	for i, u := range imageURLs {
+	for i, uStr := range imageURLs {
+		u, err := url.Parse(uStr)
+		primaryURL := uStr
+		var backupUrls []string
+
+		ext := ".jpg"
+		if err == nil {
+			if parsedExt := path.Ext(u.Path); parsedExt != "" {
+				ext = parsedExt
+			}
+			if u.RawQuery != "" && u.Query().Has("imageView") {
+				cleanU := *u
+				q := cleanU.Query()
+				q.Del("imageView")
+				q.Del("thumbnail")
+				q.Del("quality")
+				q.Del("stripmeta")
+				q.Del("type")
+				cleanU.RawQuery = q.Encode()
+				primaryURL = cleanU.String()
+				backupUrls = append(backupUrls, uStr)
+			}
+		}
+
 		media.Images = append(media.Images, extractor.ImageItem{
-			Index:    i + 1,
-			URL:      u,
-			Filename: fmt.Sprintf("%03d.jpg", i+1),
+			Index:      i + 1,
+			URL:        primaryURL,
+			BackupURLs: backupUrls,
+			Filename:   fmt.Sprintf("%03d%s", i+1, ext),
 		})
 	}
 

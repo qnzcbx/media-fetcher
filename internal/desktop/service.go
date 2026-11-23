@@ -2,11 +2,15 @@ package desktop
 
 import (
 	"context"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"io"
+	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -30,6 +34,8 @@ type DesktopService struct {
 	downloadMu     sync.Mutex
 	cancelDownload context.CancelFunc
 	activeDownload bool
+	// 预览缓存
+	previewCache sync.Map
 }
 
 func NewDesktopService() (*DesktopService, error) {
@@ -123,6 +129,70 @@ func (s *DesktopService) GetAccounts() []SafeAccount {
 	return res
 }
 
+func (s *DesktopService) FetchPreviewBase64(imgUrl string, siteId string) (string, error) {
+	if val, ok := s.previewCache.Load(imgUrl); ok {
+		return val.(string), nil
+	}
+
+	targetURL := imgUrl
+	if siteId == "lofter" {
+		u, err := url.Parse(imgUrl)
+		if err == nil {
+			q := u.Query()
+			q.Set("imageView", "")
+			q.Set("thumbnail", "400x0")
+			u.RawQuery = q.Encode()
+			targetURL = u.String()
+		}
+	} else if siteId == "bilibili" {
+		if !strings.Contains(imgUrl, "@") {
+			targetURL = imgUrl + "@400w.webp"
+		}
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(ctx, "GET", targetURL, nil)
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("User-Agent", "Mozilla/5.0")
+	if siteId == "lofter" {
+		req.Header.Set("Referer", "https://www.lofter.com")
+	} else if siteId == "bilibili" {
+		req.Header.Set("Referer", "https://www.bilibili.com")
+	}
+
+	client := s.credService.GetAnonymousClient(siteId)
+	if client == nil {
+		client = &http.Client{Timeout: 10 * time.Second}
+	}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("bad status: %d", resp.StatusCode)
+	}
+
+	b, err := io.ReadAll(io.LimitReader(resp.Body, 2<<20)) // max 2MB
+	if err != nil {
+		return "", err
+	}
+
+	contentType := resp.Header.Get("Content-Type")
+	if contentType == "" {
+		contentType = "image/jpeg"
+	}
+	b64 := fmt.Sprintf("data:%s;base64,%s", contentType, base64.StdEncoding.EncodeToString(b))
+	s.previewCache.Store(imgUrl, b64)
+	return b64, nil
+}
+
 // BiliQRSession Bilibili 前端二维码会话信息
 type BiliQRSession struct {
 	QRCodeKey string `json:"qrcodeKey"`
@@ -180,12 +250,13 @@ func (s *DesktopService) PollBiliQRCode(qrcodeKey string) (PollResult, error) {
 }
 
 type DownloadParams struct {
-	URL        string
-	AccountID  string
-	OutputDir  string
-	VideoID    int
-	VideoCodec string
-	AudioID    int
+	URL           string
+	AccountID     string
+	OutputDir     string
+	VideoID       int
+	VideoCodec    string
+	AudioID       int
+	SelectedImage []int
 }
 
 var ProgressEvent = mygo.NewEvent[ProgressInfo]("progress")
@@ -301,31 +372,63 @@ func (s *DesktopService) doDownload(ctx context.Context, params DownloadParams) 
 		outputDir = filepath.Join(home, "Downloads")
 	}
 
-	// LOFTER 图片下载逻辑
-	if len(media.Images) > 0 && len(media.VideoStreams) == 0 && len(media.AudioStreams) == 0 {
-		ProgressEvent.Emit(s.win, ProgressInfo{Stage: "images", Message: fmt.Sprintf("准备下载 %d 张图片", len(media.Images))})
-		for i, img := range media.Images {
-			filename := fmt.Sprintf("%s_%03d%s", media.ID, img.Index, filepath.Ext(img.URL))
-			opts := downloader.DownloadOptions{
-				OutputDir: outputDir,
-				Filename:  filename,
-				OnProgress: func(downloaded, total int64) {
-					ProgressEvent.Emit(s.win, ProgressInfo{
-						Stage:      "images",
-						Downloaded: downloaded,
-						Total:      total,
-						Message:    fmt.Sprintf("下载进度: %d/%d", i+1, len(media.Images)),
-					})
-				},
+		// LOFTER 图片下载逻辑
+		if len(media.Images) > 0 && len(media.VideoStreams) == 0 && len(media.AudioStreams) == 0 {
+			var imagesToDownload []extractor.ImageItem
+			if len(params.SelectedImage) > 0 {
+				selectedMap := make(map[int]bool)
+				for _, idx := range params.SelectedImage {
+					selectedMap[idx] = true
+				}
+				for _, img := range media.Images {
+					if selectedMap[img.Index] {
+						imagesToDownload = append(imagesToDownload, img)
+					}
+				}
+			} else {
+				imagesToDownload = media.Images
 			}
-			_, err := d.Download(ctx, nil, img.URL, opts)
-			if err != nil {
-				return err
+
+			if len(imagesToDownload) == 0 {
+				return fmt.Errorf("未选择任何要下载的图片")
 			}
+
+			ProgressEvent.Emit(s.win, ProgressInfo{Stage: "images", Message: fmt.Sprintf("准备下载 %d 张图片", len(imagesToDownload))})
+			for i, img := range imagesToDownload {
+				filename := fmt.Sprintf("%s_%s", media.ID, img.Filename)
+				if img.Filename == "" {
+					filename = fmt.Sprintf("%s_%03d.jpg", media.ID, img.Index)
+				}
+				opts := downloader.DownloadOptions{
+					OutputDir: outputDir,
+					Filename:  filename,
+					OnProgress: func(downloaded, total int64) {
+						ProgressEvent.Emit(s.win, ProgressInfo{
+							Stage:      "images",
+							Downloaded: downloaded,
+							Total:      total,
+							Message:    fmt.Sprintf("下载进度: %d/%d", i+1, len(imagesToDownload)),
+						})
+					},
+				}
+
+				var dlErr error
+				_, dlErr = d.Download(ctx, nil, img.URL, opts)
+				if dlErr != nil && len(img.BackupURLs) > 0 {
+					for _, backupURL := range img.BackupURLs {
+						_, dlErr = d.Download(ctx, nil, backupURL, opts)
+						if dlErr == nil {
+							break
+						}
+					}
+				}
+				if dlErr != nil {
+					return dlErr
+				}
+			}
+			ProgressEvent.Emit(s.win, ProgressInfo{Stage: "done", Message: "图片下载完成", FinalPath: outputDir})
+			return nil
 		}
-		ProgressEvent.Emit(s.win, ProgressInfo{Stage: "done", Message: "图片下载完成", FinalPath: outputDir})
-		return nil
-	}
 
 	// 创建独立临时工作目录
 	workDir, err := os.MkdirTemp("", "media-fetcher-work-*")
