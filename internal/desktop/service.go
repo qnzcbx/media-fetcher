@@ -2,7 +2,9 @@ package desktop
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"sync"
@@ -27,7 +29,7 @@ type DesktopService struct {
 	// 下载状态
 	downloadMu     sync.Mutex
 	cancelDownload context.CancelFunc
-	downloadWait   chan struct{}
+	activeDownload bool
 }
 
 func NewDesktopService() (*DesktopService, error) {
@@ -196,30 +198,30 @@ type ProgressInfo struct {
 
 func (s *DesktopService) StartDownload(params DownloadParams) error {
 	s.downloadMu.Lock()
-	if s.cancelDownload != nil {
-		s.cancelDownload()
-	}
-	waitChan := s.downloadWait
-	s.downloadMu.Unlock()
-
-	// 阻塞等待上一个任务真正结束，消除数据竞争
-	if waitChan != nil {
-		<-waitChan
+	if s.activeDownload {
+		s.downloadMu.Unlock()
+		return fmt.Errorf("当前已有任务正在下载或取消中，请稍后再试")
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
-
-	s.downloadMu.Lock()
 	s.cancelDownload = cancel
-	done := make(chan struct{})
-	s.downloadWait = done
+	s.activeDownload = true
 	s.downloadMu.Unlock()
 
 	go func() {
-		defer close(done)
+		defer func() {
+			s.downloadMu.Lock()
+			s.cancelDownload = nil
+			s.activeDownload = false
+			s.downloadMu.Unlock()
+		}()
 		err := s.doDownload(ctx, params)
 		if err != nil {
-			ProgressEvent.Emit(s.win, ProgressInfo{Stage: "error", Message: err.Error()})
+			if errors.Is(err, context.Canceled) || ctx.Err() != nil {
+				// 用户取消，不当作普通下载失败覆盖前端状态
+			} else {
+				ProgressEvent.Emit(s.win, ProgressInfo{Stage: "error", Message: err.Error()})
+			}
 		}
 	}()
 	return nil
@@ -230,8 +232,38 @@ func (s *DesktopService) CancelDownload() {
 	defer s.downloadMu.Unlock()
 	if s.cancelDownload != nil {
 		s.cancelDownload()
-		s.cancelDownload = nil
 	}
+}
+
+func safePublish(src, dst string) error {
+	err := fsutil.PublishFile(src, dst, fsutil.StrategyReplace)
+	if err == nil {
+		return nil
+	}
+
+	// 跨卷发布：复制到目标同目录下的临时文件，再同卷原子发布
+	dstDir := filepath.Dir(dst)
+	tempDst, err2 := os.CreateTemp(dstDir, ".publish-tmp-*")
+	if err2 != nil {
+		return err
+	}
+	tempName := tempDst.Name()
+	defer os.Remove(tempName)
+
+	srcFile, err2 := os.Open(src)
+	if err2 != nil {
+		tempDst.Close()
+		return err
+	}
+	defer srcFile.Close()
+
+	_, err2 = io.Copy(tempDst, srcFile)
+	tempDst.Close()
+	if err2 != nil {
+		return err
+	}
+
+	return fsutil.PublishFile(tempName, dst, fsutil.StrategyReplace)
 }
 
 func (s *DesktopService) doDownload(ctx context.Context, params DownloadParams) error {
@@ -410,13 +442,13 @@ func (s *DesktopService) doDownload(ctx context.Context, params DownloadParams) 
 		ProgressEvent.Emit(s.win, ProgressInfo{Stage: "done", Message: "下载并合并完成", FinalPath: finalOut})
 	} else if downloadedVideo != "" {
 		finalOut := filepath.Join(outputDir, fmt.Sprintf("%s.mp4", title))
-		if err := fsutil.PublishFile(downloadedVideo, finalOut, fsutil.StrategyReplace); err != nil {
+		if err := safePublish(downloadedVideo, finalOut); err != nil {
 			return fmt.Errorf("文件发布失败: %v", err)
 		}
 		ProgressEvent.Emit(s.win, ProgressInfo{Stage: "done", Message: "视频下载完成", FinalPath: finalOut})
 	} else if downloadedAudio != "" {
 		finalOut := filepath.Join(outputDir, fmt.Sprintf("%s.m4a", title))
-		if err := fsutil.PublishFile(downloadedAudio, finalOut, fsutil.StrategyReplace); err != nil {
+		if err := safePublish(downloadedAudio, finalOut); err != nil {
 			return fmt.Errorf("文件发布失败: %v", err)
 		}
 		ProgressEvent.Emit(s.win, ProgressInfo{Stage: "done", Message: "音频下载完成", FinalPath: finalOut})
