@@ -336,7 +336,7 @@ func handleDownload(args []string) {
 				Filename:  filename,
 			}
 			fmt.Printf("下载图片 %s ... ", filename)
-			_, err := d.Download(ctx, client, img.URL, opts)
+			_, err := d.Download(ctx, nil, img.URL, opts)
 			if err != nil {
 				fmt.Printf("失败: %v\n", err)
 			} else {
@@ -400,12 +400,12 @@ func handleDownload(args []string) {
 		fmt.Printf("正在下载视频: %s\n", vs.QualityLabel)
 
 		var err error
-		downloadedVideo, err = d.Download(ctx, client, vs.URL, opts)
+		downloadedVideo, err = d.Download(ctx, nil, vs.URL, opts)
 		if err != nil {
 			if len(vs.BackupURLs) > 0 {
 				fmt.Printf("视频主链接下载失败: %v, 尝试备用链接...\n", err)
 				for _, backupURL := range vs.BackupURLs {
-					downloadedVideo, err = d.Download(ctx, client, backupURL, opts)
+					downloadedVideo, err = d.Download(ctx, nil, backupURL, opts)
 					if err == nil {
 						break
 					}
@@ -435,12 +435,12 @@ func handleDownload(args []string) {
 
 		fmt.Printf("正在下载音轨: %s\n", as.Quality)
 		var err error
-		downloadedAudio, err = d.Download(ctx, client, as.URL, opts)
+		downloadedAudio, err = d.Download(ctx, nil, as.URL, opts)
 		if err != nil {
 			if len(as.BackupURLs) > 0 {
 				fmt.Printf("音频主链接下载失败: %v, 尝试备用链接...\n", err)
 				for _, backupURL := range as.BackupURLs {
-					downloadedAudio, err = d.Download(ctx, client, backupURL, opts)
+					downloadedAudio, err = d.Download(ctx, nil, backupURL, opts)
 					if err == nil {
 						break
 					}
