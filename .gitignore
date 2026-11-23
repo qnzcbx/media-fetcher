@@ -9,3 +9,7 @@
 notes/
 tasks/
 AGENTS.md
+*.cred
+accounts_meta.json*
+.credential-*.tmp
+*.log

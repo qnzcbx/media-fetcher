@@ -19,6 +19,8 @@ import (
 )
 
 var (
+	// ErrRevoked 表示当前会话已撤销。
+	ErrRevoked = errors.New("cookiejar: 会话已撤销")
 	// ErrInvalidSchemaVersion 表示不支持的持久化版本。
 	ErrInvalidSchemaVersion = errors.New("cookiejar: 不支持的凭证 Schema 版本")
 	// ErrAccountMismatch 表示凭证文件中的 SiteID 或 AccountID 与当前 CookieJar 不匹配。
@@ -36,20 +38,18 @@ var defaultTrustedDomains = map[string][]string{
 // PersistentCookieJar 完整实现 http.CookieJar 接口，具备 RFC 6265 精确状态追踪、
 // 公共后缀防御、站点信任边界拦截、版本化加密持久化、运行时自动落盘及主动撤销机制。
 type PersistentCookieJar struct {
-	mu                sync.RWMutex
-	persistMu         sync.Mutex
-	siteID            string
-	accountID         string
-	entries           map[string]CookieEntry // 键为 CookieEntry.Key()
-	allowedDomains    []string               // 站点受信任域名白名单
-	persistPath       string                 // 运行时自动持久化路径
-	vault             vault.Vault            // 运行时自动持久化 Vault
-	isRevoked         bool                   // 会话撤销标记（注销后拒绝读写）
+	mu             sync.RWMutex
+	persistMu      sync.Mutex
+	siteID         string
+	accountID      string
+	entries        map[string]CookieEntry // 键为 CookieEntry.Key()
+	allowedDomains []string               // 站点受信任域名白名单
+	persistPath    string                 // 运行时自动持久化路径
+	vault          vault.Vault            // 运行时自动持久化 Vault
+	isRevoked      bool                   // 会话撤销标记（注销后拒绝读写）
 
 	ctx               context.Context
 	cancel            context.CancelCauseFunc
-	stateVersion      int64
-	lastSavedVersion  int64
 	persistErrHandler func(error)
 }
 
@@ -119,7 +119,6 @@ func (j *PersistentCookieJar) Revoke() {
 	j.entries = make(map[string]CookieEntry)
 	j.persistPath = ""
 	j.vault = nil
-	j.stateVersion++
 	if j.cancel != nil {
 		j.cancel(errors.New("cookiejar: 会话已被撤销"))
 	}
@@ -172,7 +171,6 @@ func (j *PersistentCookieJar) SetCookies(u *url.URL, cookies []*http.Cookie) {
 	}
 
 	now := time.Now()
-	hasMutated := false
 
 	for _, c := range cookies {
 		if c == nil || c.Name == "" {
@@ -263,31 +261,24 @@ func (j *PersistentCookieJar) SetCookies(u *url.URL, cookies []*http.Cookie) {
 
 		key := entry.Key()
 		if isDelete {
-			if _, exists := j.entries[key]; exists {
-				delete(j.entries, key)
-				hasMutated = true
-			}
+			delete(j.entries, key)
 		} else {
 			// RFC 6265: 覆盖同键 Cookie 时保留最初的 CreationTime
 			if old, exists := j.entries[key]; exists {
 				entry.CreationTime = old.CreationTime
 			}
 			j.entries[key] = entry
-			hasMutated = true
 		}
 	}
 
-	// 如果开启了运行时自动持久化且发生了变更，触发安全落盘
-	if hasMutated {
-		j.stateVersion++
-	}
+	// 收到 Cookie 更新时保存当前快照，包括重试上次未写入的删除。
 	persistPath := j.persistPath
 	vaultInstance := j.vault
 	errHandler := j.persistErrHandler
 	j.mu.Unlock()
 
-	if hasMutated && persistPath != "" && vaultInstance != nil {
-		if err := j.Save(persistPath, vaultInstance); err != nil && errHandler != nil {
+	if persistPath != "" && vaultInstance != nil {
+		if err := j.Save(persistPath, vaultInstance); err != nil && !errors.Is(err, ErrRevoked) && errHandler != nil {
 			errHandler(err)
 		}
 	}
@@ -369,7 +360,6 @@ func (j *PersistentCookieJar) AllEntries() []CookieEntry {
 func (j *PersistentCookieJar) Clear() {
 	j.mu.Lock()
 	defer j.mu.Unlock()
-	j.stateVersion++
 	j.entries = make(map[string]CookieEntry)
 }
 
@@ -383,10 +373,9 @@ func (j *PersistentCookieJar) Save(filePath string, v vault.Vault) error {
 	defer j.persistMu.Unlock()
 
 	j.mu.RLock()
-	currentVer := j.stateVersion
-	if currentVer > 0 && currentVer <= j.lastSavedVersion {
+	if j.isRevoked {
 		j.mu.RUnlock()
-		return nil
+		return ErrRevoked
 	}
 
 	now := time.Now()
@@ -420,18 +409,29 @@ func (j *PersistentCookieJar) Save(filePath string, v vault.Vault) error {
 		return fmt.Errorf("cookiejar: 创建存储目录失败: %w", err)
 	}
 
-	// 独占原子写入：写入独立临时文件后原子重命名
-	tmpPath := filePath + fmt.Sprintf(".tmp.%d.%d", os.Getpid(), time.Now().UnixNano())
-	if err := os.WriteFile(tmpPath, ciphertext, 0600); err != nil {
-		return fmt.Errorf("cookiejar: 写入临时文件失败: %w", err)
+	f, err := os.CreateTemp(dir, ".credential-*.tmp")
+	if err != nil {
+		return err
+	}
+	defer os.Remove(f.Name())
+	_, writeErr := f.Write(ciphertext)
+	if writeErr == nil {
+		writeErr = f.Sync()
+	}
+	if err := errors.Join(writeErr, f.Close()); err != nil {
+		return err
 	}
 
-	if err := atomicReplaceFile(tmpPath, filePath); err != nil {
-		_ = os.Remove(tmpPath)
+	// 发布和撤销共用状态锁。撤销返回后，旧快照即使已加密也不能发布。
+	j.mu.RLock()
+	defer j.mu.RUnlock()
+	if j.isRevoked {
+		return ErrRevoked
+	}
+	if err := atomicReplaceFile(f.Name(), filePath); err != nil {
 		return fmt.Errorf("cookiejar: 原子替换凭证文件失败: %w", err)
 	}
 
-	j.lastSavedVersion = currentVer
 	return nil
 }
 
@@ -472,6 +472,9 @@ func (j *PersistentCookieJar) Load(filePath string, v vault.Vault) error {
 	j.mu.Lock()
 	defer j.mu.Unlock()
 
+	if j.isRevoked {
+		return ErrRevoked
+	}
 	j.entries = make(map[string]CookieEntry)
 	for _, e := range schema.Cookies {
 		if !e.IsExpired(now) {

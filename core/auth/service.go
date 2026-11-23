@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
+	"log"
 	"net"
 	"net/http"
 	"os"
@@ -59,7 +61,7 @@ func isHostTrustedForSite(siteID, host string) bool {
 			}
 		}
 	default:
-		return strings.Contains(host, strings.ToLower(siteID))
+		return false
 	}
 	return false
 }
@@ -73,22 +75,11 @@ type revocableTransport struct {
 }
 
 func (rt *revocableTransport) RoundTrip(req *http.Request) (*http.Response, error) {
-	if rt.jar != nil {
-		if rt.jar.IsRevoked() {
-			return nil, ErrSessionRevoked
-		}
-
-		ctx, cancel := context.WithCancelCause(req.Context())
-		defer cancel(nil)
-
-		stop := context.AfterFunc(rt.jar.Context(), func() {
-			cancel(ErrSessionRevoked)
-		})
-		defer stop()
-		req = req.WithContext(ctx)
+	if rt.jar != nil && rt.jar.IsRevoked() {
+		return nil, ErrSessionRevoked
 	}
-
-	if rt.siteID != "" && !isHostTrustedForSite(rt.siteID, req.URL.Hostname()) {
+	if rt.siteID != "" && (req.URL.Scheme != "https" && !isLoopback(req.URL.Hostname()) || !isHostTrustedForSite(rt.siteID, req.URL.Hostname())) {
+		req = req.Clone(req.Context())
 		req.Header.Del("Cookie")
 		req.Header.Del("Authorization")
 	}
@@ -96,7 +87,51 @@ func (rt *revocableTransport) RoundTrip(req *http.Request) (*http.Response, erro
 	if base == nil {
 		base = http.DefaultTransport
 	}
-	return base.RoundTrip(req)
+	if rt.jar == nil {
+		return base.RoundTrip(req)
+	}
+
+	ctx, cancel := context.WithCancelCause(req.Context())
+	stop := context.AfterFunc(rt.jar.Context(), func() { cancel(ErrSessionRevoked) })
+	cleanup := func() {
+		stop()
+		cancel(nil)
+	}
+	stopCleanup := context.AfterFunc(ctx, func() { stop() })
+	resp, err := base.RoundTrip(req.WithContext(ctx))
+	finish := func() {
+		stopCleanup()
+		cleanup()
+	}
+	if err != nil || resp == nil || resp.Body == nil || resp.Body == http.NoBody {
+		finish()
+	} else {
+		resp.Body = &sessionBody{ReadCloser: resp.Body, finish: finish}
+	}
+	return resp, err
+}
+
+func isLoopback(host string) bool {
+	return strings.EqualFold(host, "localhost") || net.ParseIP(host).IsLoopback()
+}
+
+// sessionBody 将撤销监听保留到响应读取完成或关闭。
+type sessionBody struct {
+	io.ReadCloser
+	finish func()
+}
+
+func (b *sessionBody) Read(p []byte) (int, error) {
+	n, err := b.ReadCloser.Read(p)
+	if err != nil {
+		b.finish()
+	}
+	return n, err
+}
+
+func (b *sessionBody) Close() error {
+	defer b.finish()
+	return b.ReadCloser.Close()
 }
 
 // NewCredentialService 使用指定目录与 Vault 初始化凭证管理器。
@@ -136,19 +171,24 @@ func NewCredentialService(storageDir string, v vault.Vault) (*CredentialService,
 	// 恢复已加载账号的凭证 Jar，并开启运行时自动持久化
 	for key, acc := range s.accounts {
 		credFile := s.credFilePath(acc.SiteID, acc.AccountID)
-		if _, err := os.Stat(credFile); err == nil {
-			jar := cookiejar.New(acc.SiteID, acc.AccountID)
-			if err := jar.Load(credFile, s.vault); err == nil {
-				jar.SetAutoPersist(credFile, s.vault)
-				s.jars[key] = jar
-			} else {
-				// 解密失败或密文损坏，平稳标记过期，严禁 panic
-				acc.Status = StatusExpired
-			}
+		jar := cookiejar.New(acc.SiteID, acc.AccountID)
+		if err := jar.Load(credFile, s.vault); err != nil {
+			acc.Status = StatusExpired
+			continue
 		}
+		s.bindPersistence(jar, credFile)
+		s.jars[key] = jar
 	}
 
 	return s, nil
+}
+
+func (s *CredentialService) bindPersistence(jar *cookiejar.PersistentCookieJar, path string) {
+	jar.SetPersistErrHandler(func(error) {
+		// CookieJar 接口无法返回错误，不能把磁盘路径或凭证写入日志。
+		log.Print("auth: 自动保存凭证失败，下次 Cookie 更新时将重试")
+	})
+	jar.SetAutoPersist(path, s.vault)
 }
 
 func accountKey(siteID, accountID string) string {
@@ -239,11 +279,19 @@ func (s *CredentialService) RegisterOrUpdateAccount(acc *Account, jar *cookiejar
 
 	// 持久化加密 Jar 并绑定自动落盘
 	if jar != nil {
+		if !strings.EqualFold(jar.SiteID(), acc.SiteID) || jar.AccountID() != acc.AccountID {
+			return cookiejar.ErrAccountMismatch
+		}
+		if old := s.jars[key]; old != nil && old != jar {
+			old.Revoke()
+			delete(s.jars, key)
+			s.accounts[key].Status = StatusExpired
+		}
 		credPath := s.credFilePath(acc.SiteID, acc.AccountID)
 		if err := jar.Save(credPath, s.vault); err != nil {
 			return fmt.Errorf("auth: 持久化凭证失败: %w", err)
 		}
-		jar.SetAutoPersist(credPath, s.vault)
+		s.bindPersistence(jar, credPath)
 		s.jars[key] = jar
 	}
 
@@ -317,7 +365,7 @@ func (s *CredentialService) GetClient(siteID, accountID string) (*http.Client, e
 
 	key := accountKey(siteID, accountID)
 	jar, ok := s.jars[key]
-	if !ok || jar.IsRevoked() {
+	if !ok || jar.IsRevoked() || s.accounts[key].Status != StatusActive {
 		return nil, fmt.Errorf("%w: %s 账号会话不存在或已撤销", ErrAccountNotFound, key)
 	}
 
@@ -382,7 +430,8 @@ func (s *CredentialService) DeleteAccount(siteID, accountID string) error {
 	}
 
 	// 2. 物理删除加密凭证文件
-	credPath := s.credFilePath(siteID, accountID)
+	acc.Status = StatusExpired
+	credPath := s.credFilePath(acc.SiteID, acc.AccountID)
 	if err := os.Remove(credPath); err != nil && !os.IsNotExist(err) {
 		return fmt.Errorf("auth: 物理删除磁盘凭证文件失败: %w", err)
 	}
