@@ -2,4 +2,7 @@ module media-fetcher
 
 go 1.27.4
 
-require golang.org/x/sys v0.50.0 // indirect
+require (
+	golang.org/x/net v0.63.0 // indirect
+	golang.org/x/sys v0.50.0 // indirect
+)

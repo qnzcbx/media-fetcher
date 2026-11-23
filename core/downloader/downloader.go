@@ -12,6 +12,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"media-fetcher/pkg/fsutil"
 )
 
 var (
@@ -36,13 +38,15 @@ type ProgressCallback func(downloaded, total int64)
 
 // DownloadOptions 配置下载的目标路径、头部及分块区间。
 type DownloadOptions struct {
-	OutputDir  string
-	Filename   string
-	Referer    string
-	UserAgent  string
-	RangeStart int64
-	RangeEnd   int64
-	OnProgress ProgressCallback
+	OutputDir   string
+	Filename    string
+	Referer     string
+	UserAgent   string
+	EnableRange bool
+	RangeStart  int64
+	HasRangeEnd bool
+	RangeEnd    int64
+	OnProgress  ProgressCallback
 }
 
 // SanitizeFilename 清洗文件名，过滤 Windows 非法字符及保留设备名（CON, PRN, AUX, NUL等）。
@@ -122,10 +126,9 @@ func (d *Downloader) Download(ctx context.Context, client *http.Client, mediaURL
 		req.Header.Set("Referer", opts.Referer)
 	}
 
-	isRange := false
-	if opts.RangeStart > 0 || opts.RangeEnd > 0 {
-		isRange = true
-		if opts.RangeEnd > 0 {
+	isRange := opts.EnableRange
+	if isRange {
+		if opts.HasRangeEnd {
 			req.Header.Set("Range", fmt.Sprintf("bytes=%d-%d", opts.RangeStart, opts.RangeEnd))
 		} else {
 			req.Header.Set("Range", fmt.Sprintf("bytes=%d-", opts.RangeStart))
@@ -156,13 +159,16 @@ func (d *Downloader) Download(ctx context.Context, client *http.Client, mediaURL
 		end, _ := strconv.ParseInt(matches[2], 10, 64)
 
 		// 严格校验返回区间与客户端请求区间是否一致
-		if opts.RangeStart > 0 && start != opts.RangeStart {
+		if start != opts.RangeStart {
 			return "", fmt.Errorf("%w: 期望起始 %d, 实际返回 %d", ErrRangeMismatch, opts.RangeStart, start)
 		}
-		if opts.RangeEnd > 0 && end != opts.RangeEnd {
+		if opts.HasRangeEnd && end != opts.RangeEnd {
 			return "", fmt.Errorf("%w: 期望结束 %d, 实际返回 %d", ErrRangeMismatch, opts.RangeEnd, end)
 		}
 		expectedLen = end - start + 1
+		if resp.ContentLength >= 0 && resp.ContentLength != expectedLen {
+			return "", fmt.Errorf("%w: 返回 Content-Length %d 与 Range 长度 %d 不符", ErrInvalidContentRange, resp.ContentLength, expectedLen)
+		}
 	} else {
 		if resp.StatusCode != http.StatusOK {
 			return "", fmt.Errorf("%w: 期望 200 OK, 实际返回 %d", ErrInvalidHTTPStatus, resp.StatusCode)
@@ -238,8 +244,7 @@ func (d *Downloader) Download(ctx context.Context, client *http.Client, mediaURL
 	}
 
 	// 原子替换发布为正式文件
-	_ = os.Remove(finalPath)
-	if err := os.Rename(partPath, finalPath); err != nil {
+	if err := fsutil.PublishFile(partPath, finalPath, fsutil.StrategyReplace); err != nil {
 		return "", fmt.Errorf("downloader: 原子发布最终文件失败: %w", err)
 	}
 

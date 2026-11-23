@@ -244,10 +244,12 @@ func TestM6_RangeMismatchRejection(t *testing.T) {
 	d := New(nil)
 	outDir := t.TempDir()
 	opts := DownloadOptions{
-		OutputDir:  outDir,
-		Filename:   "mismatch_range.bin",
-		RangeStart: 10,
-		RangeEnd:   20,
+		OutputDir:   outDir,
+		Filename:    "mismatch_range.bin",
+		EnableRange: true,
+		RangeStart:  10,
+		HasRangeEnd: true,
+		RangeEnd:    20,
 	}
 
 	_, err := d.Download(context.Background(), nil, server.URL, opts)
@@ -315,10 +317,12 @@ func TestDownloader_RangeDownload(t *testing.T) {
 	d := New(nil)
 	outDir := t.TempDir()
 	opts := DownloadOptions{
-		OutputDir:  outDir,
-		Filename:   "range_chunk.bin",
-		RangeStart: 5,
-		RangeEnd:   9,
+		OutputDir:   outDir,
+		Filename:    "range_chunk.bin",
+		EnableRange: true,
+		RangeStart:  5,
+		HasRangeEnd: true,
+		RangeEnd:    9,
 	}
 
 	savedPath, err := d.Download(context.Background(), nil, server.URL, opts)

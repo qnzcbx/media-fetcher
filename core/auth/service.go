@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"media-fetcher/pkg/cookiejar"
+	"media-fetcher/pkg/fsutil"
 	"media-fetcher/pkg/vault"
 )
 
@@ -72,9 +73,21 @@ type revocableTransport struct {
 }
 
 func (rt *revocableTransport) RoundTrip(req *http.Request) (*http.Response, error) {
-	if rt.jar != nil && rt.jar.IsRevoked() {
-		return nil, ErrSessionRevoked
+	if rt.jar != nil {
+		if rt.jar.IsRevoked() {
+			return nil, ErrSessionRevoked
+		}
+
+		ctx, cancel := context.WithCancelCause(req.Context())
+		defer cancel(nil)
+
+		stop := context.AfterFunc(rt.jar.Context(), func() {
+			cancel(ErrSessionRevoked)
+		})
+		defer stop()
+		req = req.WithContext(ctx)
 	}
+
 	if rt.siteID != "" && !isHostTrustedForSite(rt.siteID, req.URL.Hostname()) {
 		req.Header.Del("Cookie")
 		req.Header.Del("Authorization")
@@ -192,8 +205,7 @@ func (s *CredentialService) saveAccountsMetaLocked() error {
 	if err := os.WriteFile(tmp, data, 0600); err != nil {
 		return err
 	}
-	_ = os.Remove(s.metaFilePath())
-	return os.Rename(tmp, s.metaFilePath())
+	return fsutil.PublishFile(tmp, s.metaFilePath(), fsutil.StrategyReplace)
 }
 
 // RegisterOrUpdateAccount 登记或更新账号，持久化加密凭证并启用自动落盘。

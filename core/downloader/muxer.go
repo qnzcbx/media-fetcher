@@ -9,6 +9,8 @@ import (
 	"os/exec"
 	"path/filepath"
 	"time"
+
+	"media-fetcher/pkg/fsutil"
 )
 
 var (
@@ -110,8 +112,7 @@ func MuxVideoAudio(ctx context.Context, ffmpegPath, videoPath, audioPath, output
 	}
 
 	// 原子替换到最终目标路径
-	_ = os.Remove(outputPath)
-	if err := os.Rename(tmpMuxPath, outputPath); err != nil {
+	if err := fsutil.PublishFile(tmpMuxPath, outputPath, fsutil.StrategyReplace); err != nil {
 		return fmt.Errorf("muxer: 原子发布最终文件失败: %w", err)
 	}
 

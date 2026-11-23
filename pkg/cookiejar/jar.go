@@ -1,6 +1,7 @@
 package cookiejar
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -13,6 +14,7 @@ import (
 	"sync"
 	"time"
 
+	"media-fetcher/pkg/fsutil"
 	"media-fetcher/pkg/vault"
 )
 
@@ -34,23 +36,32 @@ var defaultTrustedDomains = map[string][]string{
 // PersistentCookieJar 完整实现 http.CookieJar 接口，具备 RFC 6265 精确状态追踪、
 // 公共后缀防御、站点信任边界拦截、版本化加密持久化、运行时自动落盘及主动撤销机制。
 type PersistentCookieJar struct {
-	mu             sync.RWMutex
-	persistMu      sync.Mutex
-	siteID         string
-	accountID      string
-	entries        map[string]CookieEntry // 键为 CookieEntry.Key()
-	allowedDomains []string               // 站点受信任域名白名单
-	persistPath    string                 // 运行时自动持久化路径
-	vault          vault.Vault            // 运行时自动持久化 Vault
-	isRevoked      bool                   // 会话撤销标记（注销后拒绝读写）
+	mu                sync.RWMutex
+	persistMu         sync.Mutex
+	siteID            string
+	accountID         string
+	entries           map[string]CookieEntry // 键为 CookieEntry.Key()
+	allowedDomains    []string               // 站点受信任域名白名单
+	persistPath       string                 // 运行时自动持久化路径
+	vault             vault.Vault            // 运行时自动持久化 Vault
+	isRevoked         bool                   // 会话撤销标记（注销后拒绝读写）
+
+	ctx               context.Context
+	cancel            context.CancelCauseFunc
+	stateVersion      int64
+	lastSavedVersion  int64
+	persistErrHandler func(error)
 }
 
 // New 创建针对特定 SiteID 与 AccountID 的 PersistentCookieJar 实例。
 func New(siteID, accountID string) *PersistentCookieJar {
+	ctx, cancel := context.WithCancelCause(context.Background())
 	jar := &PersistentCookieJar{
 		siteID:    siteID,
 		accountID: accountID,
 		entries:   make(map[string]CookieEntry),
+		ctx:       ctx,
+		cancel:    cancel,
 	}
 	// 加载默认站点信任域
 	if defaults, ok := defaultTrustedDomains[strings.ToLower(siteID)]; ok {
@@ -65,6 +76,19 @@ func (j *PersistentCookieJar) SetAllowedDomains(domains []string) {
 	defer j.mu.Unlock()
 	j.allowedDomains = make([]string, len(domains))
 	copy(j.allowedDomains, domains)
+}
+
+// SetPersistErrHandler 设置自动持久化失败时的错误回调函数。
+func (j *PersistentCookieJar) SetPersistErrHandler(handler func(error)) {
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	j.persistErrHandler = handler
+}
+
+// Context 返回与该 CookieJar 生命周期绑定的 Context。
+// 当 CookieJar 被撤销时，该 Context 会被取消，并携带撤销原因。
+func (j *PersistentCookieJar) Context() context.Context {
+	return j.ctx
 }
 
 // SetAutoPersist 配置运行时自动持久化路径与加密 Vault。
@@ -95,6 +119,10 @@ func (j *PersistentCookieJar) Revoke() {
 	j.entries = make(map[string]CookieEntry)
 	j.persistPath = ""
 	j.vault = nil
+	j.stateVersion++
+	if j.cancel != nil {
+		j.cancel(errors.New("cookiejar: 会话已被撤销"))
+	}
 }
 
 // IsRevoked 检查会话是否已被撤销。
@@ -250,12 +278,18 @@ func (j *PersistentCookieJar) SetCookies(u *url.URL, cookies []*http.Cookie) {
 	}
 
 	// 如果开启了运行时自动持久化且发生了变更，触发安全落盘
+	if hasMutated {
+		j.stateVersion++
+	}
 	persistPath := j.persistPath
 	vaultInstance := j.vault
+	errHandler := j.persistErrHandler
 	j.mu.Unlock()
 
 	if hasMutated && persistPath != "" && vaultInstance != nil {
-		_ = j.Save(persistPath, vaultInstance)
+		if err := j.Save(persistPath, vaultInstance); err != nil && errHandler != nil {
+			errHandler(err)
+		}
 	}
 }
 
@@ -335,6 +369,7 @@ func (j *PersistentCookieJar) AllEntries() []CookieEntry {
 func (j *PersistentCookieJar) Clear() {
 	j.mu.Lock()
 	defer j.mu.Unlock()
+	j.stateVersion++
 	j.entries = make(map[string]CookieEntry)
 }
 
@@ -348,6 +383,12 @@ func (j *PersistentCookieJar) Save(filePath string, v vault.Vault) error {
 	defer j.persistMu.Unlock()
 
 	j.mu.RLock()
+	currentVer := j.stateVersion
+	if currentVer > 0 && currentVer <= j.lastSavedVersion {
+		j.mu.RUnlock()
+		return nil
+	}
+
 	now := time.Now()
 	var validCookies []CookieEntry
 	for _, e := range j.entries {
@@ -390,6 +431,7 @@ func (j *PersistentCookieJar) Save(filePath string, v vault.Vault) error {
 		return fmt.Errorf("cookiejar: 原子替换凭证文件失败: %w", err)
 	}
 
+	j.lastSavedVersion = currentVer
 	return nil
 }
 
@@ -441,10 +483,5 @@ func (j *PersistentCookieJar) Load(filePath string, v vault.Vault) error {
 }
 
 func atomicReplaceFile(src, dst string) error {
-	err := os.Rename(src, dst)
-	if err == nil {
-		return nil
-	}
-	_ = os.Remove(dst)
-	return os.Rename(src, dst)
+	return fsutil.PublishFile(src, dst, fsutil.StrategyReplace)
 }

@@ -5,6 +5,7 @@
 *.test
 *.out
 
+.claude
 notes/
 tasks/
 AGENTS.md
