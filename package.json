@@ -4,15 +4,16 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "mygo:dev": "mygo dev cmd/media-fetcher-app",
-    "mygo:build": "mygo build cmd/media-fetcher-app",
-    "mygo:generate": "mygo generate cmd/media-fetcher-app",
+    "mygo:dev": "mygo dev",
+    "mygo:build": "mygo build",
+    "mygo:generate": "mygo generate",
     "dev": "vite frontend",
     "build": "vue-tsc -b frontend && vite build frontend",
     "preview": "vite preview frontend"
   },
   "dependencies": {
     "mygo-runtime": "^0.10.0",
+    "qrcode.vue": "^3.11.1",
     "vue": "^3.5.44"
   },
   "devDependencies": {

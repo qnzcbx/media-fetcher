@@ -23,8 +23,9 @@ export interface DownloadParams {
   URL: string;
   AccountID: string;
   OutputDir: string;
-  VideoIdx: number;
-  AudioIdx: number;
+  VideoID: number;
+  VideoCodec: string;
+  AudioID: number;
 }
 
 export interface ImageItem {

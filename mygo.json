@@ -2,9 +2,10 @@
   "name": "media-fetcher",
   "identifier": "com.media.fetcher",
   "version": "1.0.0",
+  "main": "./cmd/media-fetcher-app",
   "devUrl": "http://localhost:5173",
-  "devCommand": "pnpm -C frontend run dev",
-  "buildCommand": "pnpm -C frontend run build",
+  "devCommand": "pnpm run dev",
+  "buildCommand": "pnpm run build",
   "frontendDist": "frontend/dist",
   "bindings": "frontend/src/mygo.ts",
   "out": "build"

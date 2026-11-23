@@ -2,9 +2,10 @@
 import { ref, onMounted } from 'vue'
 import { DesktopService, events } from './mygo'
 import { Search, Image, User, Download, CheckCircle } from '@lucide/vue'
+import QrcodeVue from 'qrcode.vue'
 
 // --- 类型定义 ---
-type VideoStream = { quality_label: string, codec: string, bandwidth: number, need_auth: boolean }
+type VideoStream = { id: number, quality_label: string, codec: string, bandwidth: number, need_auth: boolean }
 type SafeAccount = { siteId: string, accountId: string, name: string, avatarUrl: string, status: string, isActive: boolean }
 
 // --- 状态定义 ---
@@ -15,8 +16,9 @@ const mediaInfo = ref<any>(null)
 const accounts = ref<SafeAccount[]>([])
 
 // 画质选择
-const selectedVideoIdx = ref(0)
-const selectedAudioIdx = ref(0)
+const selectedVideoID = ref(-1)
+const selectedVideoCodec = ref('')
+const selectedAudioID = ref(-1)
 
 // 鉴权状态
 const showAuthModal = ref(false)
@@ -54,8 +56,9 @@ const doParse = async () => {
   isParsing.value = true
   parseError.value = ''
   mediaInfo.value = null
-  selectedVideoIdx.value = 0
-  selectedAudioIdx.value = 0
+  selectedVideoID.value = -1
+  selectedVideoCodec.value = ''
+  selectedAudioID.value = -1
 
   try {
     let accId = ''
@@ -67,10 +70,18 @@ const doParse = async () => {
     const res = await DesktopService.extract(url.value, accId)
     mediaInfo.value = res
 
-    // 默认选中最高音质
+    // 默认选用第一个（也是唯一提炼出的最佳）画质
+    const uniques = getUniqueVideoStreams()
+    if (uniques.length > 0) {
+       selectedVideoID.value = uniques[0].stream.id
+       selectedVideoCodec.value = uniques[0].stream.codec
+    }
+
+    // 默认选中最高可用音质
     if (res.audioStreams && res.audioStreams.length > 0) {
-       // 假设返回的音轨是有序的，或者我们只默认选中第 0 项
-       selectedAudioIdx.value = 0
+       // 通过降低排序或者寻最高码率，假设这里最高带宽在头部
+       const bestAudio = [...res.audioStreams].sort((a, b) => b.bandwidth - a.bandwidth)[0]
+       selectedAudioID.value = bestAudio.id
     }
   } catch (e: any) {
     parseError.value = e.message || '解析失败'
@@ -92,8 +103,9 @@ const startDownload = async () => {
       URL: url.value,
       AccountID: accId,
       OutputDir: '', // 后端默认回退到系统 Downloads 目录
-      VideoIdx: mediaInfo.value.images?.length ? -1 : selectedVideoIdx.value,
-      AudioIdx: mediaInfo.value.images?.length ? -1 : selectedAudioIdx.value,
+      VideoID: mediaInfo.value.images?.length ? -1 : selectedVideoID.value,
+      VideoCodec: mediaInfo.value.images?.length ? '' : selectedVideoCodec.value,
+      AudioID: mediaInfo.value.images?.length ? -1 : selectedAudioID.value,
     })
   } catch (e: any) {
     console.error(e)
@@ -218,12 +230,12 @@ const getUniqueVideoStreams = () => {
                 v-for="item in getUniqueVideoStreams()"
                 :key="item.index"
                 class="quality-card"
-                :class="{ active: selectedVideoIdx === item.index }"
-                @click="selectedVideoIdx = item.index"
+                :class="{ active: selectedVideoID === item.stream.id && selectedVideoCodec === item.stream.codec }"
+                @click="selectedVideoID = item.stream.id; selectedVideoCodec = item.stream.codec"
               >
                 <div class="q-title">{{ item.stream.quality_label }}</div>
                 <div class="q-sub">{{ item.stream.codec }}</div>
-                <div class="check" v-if="selectedVideoIdx === item.index">
+                <div class="check" v-if="selectedVideoID === item.stream.id && selectedVideoCodec === item.stream.codec">
                   <CheckCircle :size="16"/>
                 </div>
               </div>
@@ -278,8 +290,7 @@ const getUniqueVideoStreams = () => {
       <div class="modal">
         <h3>登录 Bilibili</h3>
         <div class="qr-container">
-          <!-- 目前为了演示采用 API 动态生成二维码，在纯离线生产环境中建议替换为 qrcode.vue -->
-          <img v-if="qrUrl" :src="'https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=' + encodeURIComponent(qrUrl)" alt="QR Code" />
+          <qrcode-vue v-if="qrUrl" :value="qrUrl" :size="200" level="M" render-as="svg" />
           <div v-else class="qr-placeholder">加载中...</div>
         </div>
         <p class="qr-status">{{ qrStatus }}</p>

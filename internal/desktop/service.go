@@ -14,6 +14,7 @@ import (
 	"media-fetcher/core/extractor"
 	"media-fetcher/core/extractor/bilibili"
 	"media-fetcher/core/extractor/lofter"
+	"media-fetcher/pkg/fsutil"
 	"media-fetcher/pkg/vault"
 )
 
@@ -172,11 +173,12 @@ func (s *DesktopService) PollBiliQRCode(qrcodeKey string) (PollResult, error) {
 }
 
 type DownloadParams struct {
-	URL       string
-	AccountID string
-	OutputDir string
-	VideoIdx  int
-	AudioIdx  int
+	URL        string
+	AccountID  string
+	OutputDir  string
+	VideoID    int
+	VideoCodec string
+	AudioID    int
 }
 
 var ProgressEvent = mygo.NewEvent[ProgressInfo]("progress")
@@ -271,19 +273,39 @@ func (s *DesktopService) doDownload(ctx context.Context, params DownloadParams) 
 		return nil
 	}
 
+	// 创建独立临时工作目录
+	workDir, err := os.MkdirTemp("", "media-fetcher-work-*")
+	if err != nil {
+		return fmt.Errorf("创建临时工作目录失败: %v", err)
+	}
+	defer os.RemoveAll(workDir)
+
 	var downloadedVideo, downloadedAudio string
 	title := downloader.SanitizeFilename(media.Title)
 	if title == "media_download" {
 		title = media.ID
 	}
 
-	vIdx, aIdx := params.VideoIdx, params.AudioIdx
+	var targetVideo *extractor.VideoStream
+	var targetAudio *extractor.AudioStream
 
-	if vIdx >= 0 && vIdx < len(media.VideoStreams) {
-		vs := media.VideoStreams[vIdx]
+	for _, vs := range media.VideoStreams {
+		if vs.ID == params.VideoID && vs.Codec == params.VideoCodec {
+			targetVideo = &vs
+			break
+		}
+	}
+	for _, as := range media.AudioStreams {
+		if as.ID == params.AudioID {
+			targetAudio = &as
+			break
+		}
+	}
+
+	if targetVideo != nil {
 		opts := downloader.DownloadOptions{
-			OutputDir: outputDir,
-			Filename:  fmt.Sprintf("%s.video.tmp", title),
+			OutputDir: workDir,
+			Filename:  "video.tmp",
 			Referer:   "https://www.bilibili.com",
 			OnProgress: func(downloaded, total int64) {
 				ProgressEvent.Emit(s.win, ProgressInfo{
@@ -294,17 +316,28 @@ func (s *DesktopService) doDownload(ctx context.Context, params DownloadParams) 
 				})
 			},
 		}
-		downloadedVideo, err = d.Download(ctx, nil, vs.URL, opts)
-		if err != nil {
-			return err
+
+		var dlErr error
+		downloadedVideo, dlErr = d.Download(ctx, nil, targetVideo.URL, opts)
+		if dlErr != nil {
+			if len(targetVideo.BackupURLs) > 0 {
+				for _, backupURL := range targetVideo.BackupURLs {
+					downloadedVideo, dlErr = d.Download(ctx, nil, backupURL, opts)
+					if dlErr == nil {
+						break
+					}
+				}
+			}
+			if dlErr != nil {
+				return fmt.Errorf("视频下载失败: %v", dlErr)
+			}
 		}
 	}
 
-	if aIdx >= 0 && aIdx < len(media.AudioStreams) {
-		as := media.AudioStreams[aIdx]
+	if targetAudio != nil {
 		opts := downloader.DownloadOptions{
-			OutputDir: outputDir,
-			Filename:  fmt.Sprintf("%s.audio.tmp", title),
+			OutputDir: workDir,
+			Filename:  "audio.tmp",
 			Referer:   "https://www.bilibili.com",
 			OnProgress: func(downloaded, total int64) {
 				ProgressEvent.Emit(s.win, ProgressInfo{
@@ -315,9 +348,20 @@ func (s *DesktopService) doDownload(ctx context.Context, params DownloadParams) 
 				})
 			},
 		}
-		downloadedAudio, err = d.Download(ctx, nil, as.URL, opts)
-		if err != nil {
-			return err
+		var dlErr error
+		downloadedAudio, dlErr = d.Download(ctx, nil, targetAudio.URL, opts)
+		if dlErr != nil {
+			if len(targetAudio.BackupURLs) > 0 {
+				for _, backupURL := range targetAudio.BackupURLs {
+					downloadedAudio, dlErr = d.Download(ctx, nil, backupURL, opts)
+					if dlErr == nil {
+						break
+					}
+				}
+			}
+			if dlErr != nil {
+				return fmt.Errorf("音频下载失败: %v", dlErr)
+			}
 		}
 	}
 
@@ -335,11 +379,15 @@ func (s *DesktopService) doDownload(ctx context.Context, params DownloadParams) 
 		ProgressEvent.Emit(s.win, ProgressInfo{Stage: "done", Message: "下载并合并完成", FinalPath: finalOut})
 	} else if downloadedVideo != "" {
 		finalOut := filepath.Join(outputDir, fmt.Sprintf("%s.mp4", title))
-		os.Rename(downloadedVideo, finalOut)
+		if err := fsutil.PublishFile(downloadedVideo, finalOut, fsutil.StrategyReplace); err != nil {
+			return fmt.Errorf("文件发布失败: %v", err)
+		}
 		ProgressEvent.Emit(s.win, ProgressInfo{Stage: "done", Message: "视频下载完成", FinalPath: finalOut})
 	} else if downloadedAudio != "" {
 		finalOut := filepath.Join(outputDir, fmt.Sprintf("%s.m4a", title))
-		os.Rename(downloadedAudio, finalOut)
+		if err := fsutil.PublishFile(downloadedAudio, finalOut, fsutil.StrategyReplace); err != nil {
+			return fmt.Errorf("文件发布失败: %v", err)
+		}
 		ProgressEvent.Emit(s.win, ProgressInfo{Stage: "done", Message: "音频下载完成", FinalPath: finalOut})
 	} else {
 		return fmt.Errorf("未下载任何内容")
