@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { KeyRound } from "@lucide/vue";
+import { KeyRound, Settings } from "@lucide/vue";
 
 defineProps<{
   onOpenCredentials: () => void;
+  onOpenSettings: () => void;
 }>();
 </script>
 
@@ -12,6 +13,9 @@ defineProps<{
     <div class="actions">
       <button @click="onOpenCredentials" class="icon-btn" title="凭证管理">
         <KeyRound class="icon" />
+      </button>
+      <button @click="onOpenSettings" class="icon-btn" title="设置">
+        <Settings class="icon" />
       </button>
     </div>
   </header>
@@ -36,6 +40,9 @@ defineProps<{
 }
 
 .actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
   -webkit-app-region: no-drag;
 }
 
@@ -53,6 +60,11 @@ defineProps<{
 }
 
 .icon-btn:hover {
-  background: var(--input-bg);
+  background: var(--hover-bg);
+}
+
+.icon-btn:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 1px;
 }
 </style>

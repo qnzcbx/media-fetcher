@@ -72,7 +72,7 @@ const isAllSelected = () => {
   cursor: pointer;
   transition: all 0.2s;
   overflow: hidden;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+  box-shadow: 0 2px 8px var(--shadow-color);
 }
 
 .video-card.active {

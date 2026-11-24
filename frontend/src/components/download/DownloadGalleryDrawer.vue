@@ -143,7 +143,7 @@ const handleRemove = () => {
       :totalSelectable="totalSelectable"
       hide-select-all
       @remove="handleRemove"
-      style="border-radius: 0; box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.05)"
+      style="border-radius: 0; box-shadow: 0 -2px 10px var(--shadow-color)"
     />
   </BaseSheet>
 </template>
@@ -210,8 +210,8 @@ nav button {
 }
 
 nav button[aria-pressed="true"] {
-  background: #caedf6;
-  color: #17323c;
+  background: var(--selection-bg);
+  color: var(--selection-text);
 }
 
 .grid {
@@ -243,7 +243,7 @@ nav button[aria-pressed="true"] {
 }
 
 .card-wrapper.selected .selection-interaction-layer {
-  background: rgba(142, 215, 235, 0.2);
+  background: var(--selection-soft);
 }
 
 .check-circle {
@@ -273,7 +273,7 @@ nav button[aria-pressed="true"] {
 }
 
 .error-text {
-  color: #e53e3e;
+  color: var(--danger);
   font-size: 13px;
   margin-bottom: 12px;
 }

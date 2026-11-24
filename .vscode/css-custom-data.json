@@ -1,0 +1,13 @@
+{
+  "version": 1.1,
+  "atDirectives": [
+    {
+      "name": "@apply",
+      "description": "UnoCSS：将工具类展开为 CSS 声明。"
+    },
+    {
+      "name": "@screen",
+      "description": "UnoCSS：使用预设中的响应式断点。"
+    }
+  ]
+}

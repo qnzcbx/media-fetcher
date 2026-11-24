@@ -201,13 +201,13 @@ const metadata = computed(() => {
   transition: background 0.2s;
 }
 .list-item:hover {
-  background: var(--input-bg);
+  background: var(--hover-bg);
 }
 .list-item.selectable {
   cursor: pointer;
 }
 .list-item.selected {
-  background: rgba(142, 215, 235, 0.15);
+  background: var(--selection-soft);
 }
 
 .checkbox {
@@ -239,7 +239,7 @@ const metadata = computed(() => {
   position: relative;
   border-radius: 8px;
   overflow: hidden;
-  background: #eaeef0;
+  background: var(--input-bg);
   display: grid;
   place-items: center;
 }
@@ -270,6 +270,19 @@ img {
 }
 .cover :deep(.shade) {
   z-index: 2;
+  gap: 4px;
+  padding: 4px;
+  font-size: 11px;
+}
+
+/* 列表缩略图高度较小，缩小进度遮罩的字号避免文字被裁切。 */
+.cover :deep(.shade strong) {
+  font-size: 16px;
+}
+
+.cover :deep(.shade progress) {
+  width: 70%;
+  height: 3px;
 }
 
 .info {
@@ -315,7 +328,7 @@ img {
   background: var(--card-bg);
   border: 1px solid var(--border);
   border-radius: 8px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 4px 12px var(--shadow-color);
   padding: 4px;
   min-width: 110px;
   display: flex;
@@ -333,7 +346,7 @@ img {
   white-space: nowrap;
 }
 .dropdown-menu button:hover {
-  background: var(--input-bg);
+  background: var(--hover-bg);
 }
 
 .fade-leave-active {

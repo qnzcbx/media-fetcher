@@ -1,10 +1,65 @@
+/*
+ * 主题设计变量：Light / Dark 的唯一颜色来源。
+ * UnoCSS theme.colors 只映射这里的变量，不维护第二份色值表。
+ */
 :root {
+  color-scheme: light;
+
   --bg-color: #fafafa;
   --card-bg: #ffffff;
   --input-bg: #f1f3f4;
   --primary: #8ed7eb;
   --primary-hover: #72c7df;
+  --primary-text: #17323c;
   --text-main: #202427;
   --text-sub: #858b90;
   --border: #e0e4e8;
+
+  --selection-bg: #caedf6;
+  --selection-text: #17323c;
+  --selection-soft: rgba(142, 215, 235, 0.15);
+  --hover-bg: #f1f3f4;
+  --overlay-bg: rgba(0, 0, 0, 0.4);
+  --shadow-color: rgba(0, 0, 0, 0.1);
+  --focus-ring: #8ed7eb;
+
+  --danger: #e53e3e;
+  --danger-bg: #fff5f5;
+  --error-bg: #fed7d7;
+  --error-text: #822727;
+  --success-bg: #c6f6d5;
+  --success-text: #22543d;
+  --warning-bg: #feebc8;
+  --warning-text: #7b341e;
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+
+  --bg-color: #181a1c;
+  --card-bg: #222528;
+  --input-bg: #2c3033;
+  --primary: #8ed7eb;
+  --primary-hover: #72c7df;
+  --primary-text: #10262d;
+  --text-main: #e8ecef;
+  --text-sub: #9ba4ab;
+  --border: #363c41;
+
+  --selection-bg: #294650;
+  --selection-text: #a8e5f4;
+  --selection-soft: rgba(142, 215, 235, 0.16);
+  --hover-bg: #2c3033;
+  --overlay-bg: rgba(0, 0, 0, 0.58);
+  --shadow-color: rgba(0, 0, 0, 0.45);
+  --focus-ring: #8ed7eb;
+
+  --danger: #f87171;
+  --danger-bg: #3a2424;
+  --error-bg: #3b2325;
+  --error-text: #fca5a5;
+  --success-bg: #1f3a2d;
+  --success-text: #86efac;
+  --warning-bg: #3b3020;
+  --warning-text: #fcd34d;
 }

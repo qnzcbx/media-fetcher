@@ -9,6 +9,7 @@ import CredentialModal from "./components/credential/CredentialModal.vue";
 import BilibiliQRModal from "./components/credential/BilibiliQRModal.vue";
 import DownloadGallery from "./components/download/DownloadGallery.vue";
 import DownloadGalleryDrawer from "./components/download/DownloadGalleryDrawer.vue";
+import SettingsDrawer from "./components/settings/SettingsDrawer.vue";
 import DownloadsView from "./views/DownloadsView.vue";
 
 import type { MediaInfoResponse } from "./mygo";
@@ -17,6 +18,7 @@ import { useMediaParser } from "./composables/useMediaParser";
 import { useMediaPreview } from "./composables/useMediaPreview";
 import { useMediaSelection } from "./composables/useMediaSelection";
 import { useDownloads } from "./composables/useDownloads";
+import { usePreferences } from "./composables/usePreferences";
 import { getUniqueVideoStreams } from "./utils/media";
 
 // Composables
@@ -47,10 +49,12 @@ const {
 } = useMediaSelection();
 
 const { isDownloading, cards, error: downloadError, doDownload, doCancel, act, removeMultiple } = useDownloads();
+const { preferences, setTheme, setDefaultAudioFormat } = usePreferences();
 
 // State
 const currentView = ref<"home" | "downloads">("home");
 const drawerOpen = ref(false);
+const settingsOpen = ref(false);
 
 const url = ref("");
 let snapshot: { url: string; media: MediaInfoResponse } | undefined;
@@ -143,7 +147,7 @@ const handleUnlock = () => {
 <template>
   <div class="app-container" :class="{ 'app-container--downloads': currentView === 'downloads' }">
     <template v-if="currentView === 'home'">
-      <AppHeader @openCredentials="openCredentials" />
+      <AppHeader @openCredentials="openCredentials" @openSettings="settingsOpen = true" />
 
       <main class="main-content" :class="{ 'no-downloads': cards.length === 0 }">
         <BrandWordmark />
@@ -195,6 +199,15 @@ const handleUnlock = () => {
       @removeSelected="removeMultiple"
     />
 
+    <SettingsDrawer
+      :open="settingsOpen"
+      :theme="preferences.theme"
+      :defaultAudioFormat="preferences.defaultAudioFormat"
+      @close="settingsOpen = false"
+      @update:theme="setTheme"
+      @update:defaultAudioFormat="setDefaultAudioFormat"
+    />
+
     <!-- Resource Selection Modal -->
     <ResourcePicker
       v-if="mediaInfo"
@@ -208,6 +221,7 @@ const handleUnlock = () => {
       :selectedImages="selectedImages"
       :uniqueVideoStreams="uniqueVideoStreams"
       :showUnlockCard="showUnlockCard"
+      :defaultAudioFormat="preferences.defaultAudioFormat"
       @close="clearMediaInfo"
       @startDownload="handleStartDownload"
       @update:selectedVideo="(id, codec) => { selectedVideoID = id; selectedVideoCodec = codec; }"
@@ -243,9 +257,10 @@ const handleUnlock = () => {
   height: 100vh;
   position: relative;
   scrollbar-gutter: stable;
-  background: var(--bg);
+  background: var(--bg-color);
   display: flex;
   flex-direction: column;
+  transition: background-color 0.18s ease;
 }
 /* 独立下载页由内部 .list-container 负责滚动，避免外层与列表双重滚动条。 */
 .app-container--downloads {
@@ -267,10 +282,10 @@ const handleUnlock = () => {
 }
 
 .error-msg {
-  color: #e53e3e;
+  color: var(--error-text);
   text-align: center;
   margin-top: 16px;
-  background: #fed7d7;
+  background: var(--error-bg);
   padding: 10px;
   border-radius: 8px;
 }

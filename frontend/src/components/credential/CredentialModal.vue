@@ -63,7 +63,7 @@ defineEmits<{
   color: var(--text-sub);
 }
 .auth-status.active {
-  color: #2b6cb0;
+  color: var(--selection-text);
   font-weight: 500;
 }
 </style>

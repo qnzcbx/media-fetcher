@@ -35,7 +35,7 @@ const allSelected = computed(() => props.totalSelectable > 0 && props.count === 
 .selection-bar {
   background: var(--card-bg);
   border-top: 1px solid var(--border);
-  box-shadow: 0 -2px 10px rgba(0,0,0,0.05);
+  box-shadow: 0 -2px 10px var(--shadow-color);
 }
 .selection-bar-inner {
   display: flex;
@@ -67,9 +67,9 @@ const allSelected = computed(() => props.totalSelectable > 0 && props.count === 
   border-radius: 4px;
 }
 .btn-danger {
-  background: #fff;
-  border: 1px solid #e53e3e;
-  color: #e53e3e;
+  background: var(--card-bg);
+  border: 1px solid var(--danger);
+  color: var(--danger);
   padding: 6px 16px;
   border-radius: 6px;
   cursor: pointer;
@@ -79,6 +79,6 @@ const allSelected = computed(() => props.totalSelectable > 0 && props.count === 
   cursor: not-allowed;
 }
 .btn-danger:hover:not(:disabled) {
-  background: #fff5f5;
+  background: var(--danger-bg);
 }
 </style>

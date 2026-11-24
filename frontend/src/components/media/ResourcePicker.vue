@@ -9,6 +9,7 @@ import DownloadModeSelector from "./DownloadModeSelector.vue";
 import ImageSelectionGrid from "./ImageSelectionGrid.vue";
 import type { ImageItem, MediaInfoResponse } from "../../mygo";
 import type { UniqueVideoStream } from "../../utils/media";
+import type { AudioFormat } from "../../utils/preferences";
 
 type DownloadMode = { id: string; label: string; enabled: boolean };
 
@@ -27,6 +28,8 @@ const props = defineProps<{
   showUnlockCard?: boolean;
   parseError?: string;
   downloadBusy?: boolean;
+  // 设置中的默认音频格式只影响新打开的选择器，单次修改不回写偏好。
+  defaultAudioFormat?: AudioFormat;
 }>();
 
 const emit = defineEmits<{
@@ -41,7 +44,7 @@ const emit = defineEmits<{
 }>();
 
 const mode = ref("complete");
-const format = ref("m4a");
+const format = ref<AudioFormat>(props.defaultAudioFormat ?? "m4a");
 
 const available = computed<DownloadMode[]>(() => [
   { id: "complete", label: "完整视频", enabled: props.selectedVideoID >= 0 && props.selectedAudioID >= 0 },
@@ -171,7 +174,7 @@ const startDownload = () => {
   flex-direction: column;
   min-height: 0;
   overflow: hidden;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 8px 24px var(--shadow-color);
 }
 
 /* 三种下载模式使用同一固定内容高度，避免切换时弹窗位移。 */
@@ -233,8 +236,8 @@ const startDownload = () => {
 .error-msg {
   flex-shrink: 0;
   margin: 0;
-  color: #e53e3e;
-  background: #fed7d7;
+  color: var(--error-text);
+  background: var(--error-bg);
   padding: 10px 12px;
   border-radius: 8px;
   font-size: 13px;

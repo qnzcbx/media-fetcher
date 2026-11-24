@@ -85,8 +85,8 @@ const emit = defineEmits<{
 .sheet-content {
   position: fixed;
   z-index: 1000;
-  background: var(--bg, #f7f9fa);
-  box-shadow: 0 0 24px rgba(0, 0, 0, 0.1);
+  background: var(--bg-color);
+  box-shadow: 0 0 24px var(--shadow-color);
   display: flex;
   flex-direction: column;
 }

@@ -16,10 +16,14 @@ const emit = defineEmits<{
 
 const filter = ref("");
 const filters = computed(() => [
-  { id: "", name: "全部" }, { id: "video", name: "视频" }, { id: "image", name: "图片" },
+  { id: "", name: "全部" },
+  { id: "video", name: "视频" },
+  { id: "image", name: "图片" },
   ...(props.cards.some((item) => item.kind === "audio") ? [{ id: "audio", name: "音频" }] : []),
 ]);
-const filtered = computed(() => props.cards.filter((item) => !filter.value || item.kind === filter.value));
+const filtered = computed(() =>
+  props.cards.filter((item) => !filter.value || item.kind === filter.value),
+);
 
 const {
   isSelectionMode,
@@ -29,7 +33,7 @@ const {
   toggleSelection,
   selectAll,
   collectSelectableIds,
-  selectedCount
+  selectedCount,
 } = useGallerySelection();
 
 watch(filter, () => {
@@ -46,7 +50,7 @@ const handleRemove = () => {
   const confirm = window.confirm(`移除选中的 ${ids.length} 条下载记录？本地文件将保留。`);
   if (!confirm) return;
 
-  emit('removeSelected', ids);
+  emit("removeSelected", ids);
   exitSelectionMode();
 };
 </script>
@@ -60,8 +64,11 @@ const handleRemove = () => {
           <h1>我的下载</h1>
         </div>
         <div class="right">
-          <button class="btn-text" @click="isSelectionMode ? exitSelectionMode() : enterSelectionMode()">
-            {{ isSelectionMode ? '取消选择' : '选择' }}
+          <button
+            class="btn-text"
+            @click="isSelectionMode ? exitSelectionMode() : enterSelectionMode()"
+          >
+            {{ isSelectionMode ? "取消选择" : "选择" }}
           </button>
         </div>
       </header>
@@ -120,7 +127,7 @@ const handleRemove = () => {
   height: 100%;
   min-height: 0;
   overflow: hidden;
-  background: var(--bg);
+  background: var(--bg-color);
 }
 
 .content-wrapper {
@@ -198,7 +205,7 @@ const handleRemove = () => {
   transform: translateX(-50%);
   width: 20px;
   height: 3px;
-  background: #a3d2e1;
+  background: var(--primary);
   border-radius: 3px 3px 0 0;
 }
 
@@ -213,7 +220,7 @@ const handleRemove = () => {
   background: var(--card-bg);
   border-radius: 12px;
   overflow: hidden;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.02);
+  box-shadow: 0 2px 8px var(--shadow-color);
 }
 .list > *:last-child {
   border-bottom: none;
@@ -226,7 +233,7 @@ const handleRemove = () => {
 }
 
 .error-msg {
-  color: #e53e3e;
+  color: var(--danger);
   text-align: center;
   margin-bottom: 16px;
   font-size: 14px;

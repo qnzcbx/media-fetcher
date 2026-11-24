@@ -85,16 +85,16 @@ defineEmits<{
 }
 
 .status-badge.done {
-  background: #c6f6d5;
-  color: #22543d;
+  background: var(--success-bg);
+  color: var(--success-text);
 }
 .status-badge.error {
-  background: #fed7d7;
-  color: #822727;
+  background: var(--error-bg);
+  color: var(--error-text);
 }
 .status-badge.muxing {
-  background: #feebc8;
-  color: #7b341e;
+  background: var(--warning-bg);
+  color: var(--warning-text);
 }
 
 .task-msg {

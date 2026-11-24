@@ -181,7 +181,7 @@ img {
   border: 1px solid var(--border, #dce2e5);
   border-radius: 8px;
   padding: 4px;
-  box-shadow: 0 4px 12px #0002;
+  box-shadow: 0 4px 12px var(--shadow-color);
 }
 .actions button {
   border: 0;

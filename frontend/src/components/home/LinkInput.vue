@@ -83,7 +83,7 @@ const onPaste = async () => {
 .search-box:focus-within {
   background: var(--card-bg);
   border-color: var(--primary);
-  box-shadow: 0 4px 16px rgba(142, 215, 235, 0.1);
+  box-shadow: 0 4px 16px var(--selection-soft);
 }
 
 .search-box input {
@@ -113,7 +113,7 @@ const onPaste = async () => {
 }
 
 .icon-btn-small:hover:not(:disabled) {
-  background: var(--input-bg);
+  background: var(--hover-bg);
   color: var(--text-main);
 }
 
@@ -123,6 +123,6 @@ const onPaste = async () => {
 
 .icon-btn-small.primary:hover:not(:disabled) {
   background: var(--primary);
-  color: #000;
+  color: var(--primary-text);
 }
 </style>

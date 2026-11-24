@@ -17,12 +17,12 @@ const emit = defineEmits<{
 </script>
 
 <template>
-  <div class="mode-selector flex gap-0.5 rounded-[10px] p-[3px] bg-field" role="group" aria-label="下载模式">
+  <div class="mode-selector" role="group" aria-label="下载模式">
     <button
       v-for="item in options"
       :key="item.id"
-      class="flex-1 border-0 bg-transparent rounded-[7px] px-3.5 py-1.5 text-[14px] leading-[normal] text-muted cursor-pointer transition-colors duration-[180ms] hover:(text-main) focus-visible:(outline outline-2 outline-offset-1 outline-primary) disabled:(opacity-45 cursor-not-allowed)"
       type="button"
+      class="mode-button"
       :disabled="!item.enabled"
       :aria-pressed="modelValue === item.id"
       @click="item.enabled && emit('update:modelValue', item.id)"
@@ -33,8 +33,37 @@ const emit = defineEmits<{
 </template>
 
 <style scoped>
-/* 选中态依赖 aria-pressed，保留语义化状态选择器，颜色仍来自设计变量。 */
-.mode-selector button[aria-pressed="true"] {
-  @apply bg-[#caedf6] text-[#17323c] font-medium;
+.mode-selector {
+  @apply flex gap-0.5 rounded-[10px] p-[3px];
+  background: var(--input-bg);
+}
+
+.mode-button {
+  @apply flex-1 border-0 bg-transparent text-muted cursor-pointer transition-colors;
+  border-radius: 7px;
+  padding: 6px 14px;
+  font-size: 14px;
+  line-height: normal;
+  transition-duration: 180ms;
+}
+
+.mode-button:hover:not(:disabled) {
+  @apply text-main;
+}
+
+.mode-button:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 1px;
+}
+
+.mode-button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.mode-button[aria-pressed="true"] {
+  background: var(--selection-bg);
+  color: var(--selection-text);
+  font-weight: 500;
 }
 </style>

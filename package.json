@@ -9,6 +9,7 @@
     "mygo:generate": "mygo generate",
     "test:downloads": "node frontend/test/download-gallery.test.mjs",
     "test:credentials": "node frontend/test/credential-contract.test.mjs",
+    "test:preferences": "node frontend/test/preferences.test.mjs",
     "dev": "vite frontend",
     "build": "vue-tsc -b frontend && vite build frontend",
     "preview": "vite preview frontend"

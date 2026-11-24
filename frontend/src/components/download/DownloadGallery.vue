@@ -47,6 +47,6 @@ h2 { font-size:clamp(18px, 2.4vw, 24px); margin:0; font-weight:500; }
 .icon-btn { display:flex; align-items:center; border:0; background:transparent; color:var(--text-sub); cursor:pointer; padding: 4px; }
 .icon-btn:hover { color: var(--primary); }
 .grid { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:10px; }
-.error-text { color:#e53e3e; font-size:13px; margin-bottom: 8px; }
+.error-text { color:var(--danger); font-size:13px; margin-bottom: 8px; }
 @media (max-width:460px) { .grid { grid-template-columns:repeat(3,minmax(0,1fr)); } .recent > :nth-child(n+4) { display:none; } }
 </style>

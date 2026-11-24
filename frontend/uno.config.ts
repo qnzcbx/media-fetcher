@@ -22,6 +22,9 @@ export default defineConfig({
       main: 'var(--text-main)',
       muted: 'var(--text-sub)',
       outline: 'var(--border)',
+      selection: 'var(--selection-bg)',
+      'selection-text': 'var(--selection-text)',
+      danger: 'var(--danger)',
     },
   },
 
