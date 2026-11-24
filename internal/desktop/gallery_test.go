@@ -50,6 +50,7 @@ func TestGalleryPartialDownloadAndRestart(t *testing.T) {
 	dir, out := t.TempDir(), t.TempDir()
 	service := &DesktopService{registry: registry, credService: cred, historyDir: dir}
 	params := DownloadParams{
+		Mode:      "images",
 		TaskID:    "0123456789abcdef0123456789abcdef",
 		URL:       "https://example.lofter.com/post/abc_def?private=fixture",
 		OutputDir: out, SelectedImage: []int{1, 2}, VideoID: -1, AudioID: -1,

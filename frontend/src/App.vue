@@ -92,17 +92,21 @@ const handleParse = async () => {
   }
 };
 
-const handleStartDownload = async () => {
+const handleStartDownload = async (mode: string, format: string) => {
   if (!snapshot || mediaInfo.value !== snapshot.media) return;
   const { url, media } = snapshot;
 
   const params = {
     URL: url,
+    Mode: mode,
+    AudioFormat: format,
+    CoverPreview: previewMap.value[media.coverUrl] ?? "",
+    PreviewURLs: mode === "images" ? (media.images ?? []).filter(img => selectedImages.value.includes(img.index)).map(img => img.url) : [media.coverUrl],
     AccountID: media.usedAccountId,
     OutputDir: "", // 后端默认回退到系统 Downloads 目录
-    VideoID: media.images?.length ? -1 : selectedVideoID.value,
-    VideoCodec: media.images?.length ? "" : selectedVideoCodec.value,
-    AudioID: media.images?.length ? -1 : selectedAudioID.value,
+    VideoID: mode === "images" || mode === "audio" ? -1 : selectedVideoID.value,
+    VideoCodec: mode === "images" || mode === "audio" ? "" : selectedVideoCodec.value,
+    AudioID: mode === "images" || mode === "video" ? -1 : selectedAudioID.value,
     SelectedImage: media.images?.length ? selectedImages.value : [],
   };
 
@@ -137,7 +141,7 @@ const handleUnlock = () => {
 </script>
 
 <template>
-  <div class="app-container">
+  <div class="app-container" :class="{ 'app-container--downloads': currentView === 'downloads' }">
     <template v-if="currentView === 'home'">
       <AppHeader @openCredentials="openCredentials" />
 
@@ -242,6 +246,10 @@ const handleUnlock = () => {
   background: var(--bg);
   display: flex;
   flex-direction: column;
+}
+/* 独立下载页由内部 .list-container 负责滚动，避免外层与列表双重滚动条。 */
+.app-container--downloads {
+  overflow-y: hidden;
 }
 .main-content {
   flex: 1;

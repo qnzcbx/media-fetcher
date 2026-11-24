@@ -95,7 +95,7 @@ const handleRemove = () => {
 
       <GallerySelectionBar
         v-if="isSelectionMode"
-        class="selection-bar-fixed"
+        class="selection-bar-footer"
         :count="selectedCount"
         :totalSelectable="filtered.filter(c => !['running','cancelling','queued'].includes(c.status)).length"
         @remove="handleRemove"
@@ -107,17 +107,24 @@ const handleRemove = () => {
 
 <style scoped>
 .downloads-view {
+  flex: 1;
+  display: flex;
   width: 100%;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
   background: var(--bg);
-  min-height: 100%;
 }
 
 .content-wrapper {
-  max-width: 1160px;
-  margin: 0 auto;
-  width: 100%;
   display: flex;
   flex-direction: column;
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 1200px;
+  height: 100%;
+  min-height: 0;
+  margin: 0 auto;
   padding: 0 20px;
 }
 
@@ -126,6 +133,7 @@ const handleRemove = () => {
   align-items: center;
   justify-content: space-between;
   padding: 24px 0 16px;
+  flex-shrink: 0;
 }
 .header .left {
   display: flex;
@@ -157,6 +165,7 @@ const handleRemove = () => {
 
 .filters {
   margin-bottom: 24px;
+  flex-shrink: 0;
 }
 .filters nav {
   display: flex;
@@ -187,8 +196,11 @@ const handleRemove = () => {
 }
 
 .list-container {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
   width: 100%;
-  padding-bottom: 40px;
+  padding-bottom: 16px;
 }
 .list {
   background: var(--card-bg);
@@ -213,13 +225,10 @@ const handleRemove = () => {
   font-size: 14px;
 }
 
-.selection-bar-fixed {
-  position: sticky;
-  bottom: 0;
-  z-index: 10;
-  margin: 0 -20px;
-  padding: 12px 20px;
-  box-shadow: 0 -4px 20px rgba(0,0,0,0.08);
+.selection-bar-footer {
+  position: static;
+  flex-shrink: 0;
+  margin: 0;
   border-radius: 0;
 }
 </style>

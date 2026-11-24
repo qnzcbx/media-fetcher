@@ -2,6 +2,7 @@ package desktop
 
 import (
 	"bytes"
+	"context"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -21,24 +22,28 @@ import (
 	"time"
 
 	"github.com/egoist/mygo"
+	_ "golang.org/x/image/webp"
+	"media-fetcher/core/downloader"
 	"media-fetcher/pkg/fsutil"
 )
 
 type DownloadRecord struct {
-	ID          string    `json:"id"`
-	TaskID      string    `json:"taskId"`
-	SiteID      string    `json:"siteId"`
-	Kind        string    `json:"kind"`
-	Title       string    `json:"title"`
-	SourceURL   string    `json:"sourceUrl"`
-	FinalPath   string    `json:"finalPath"`
-	Thumbnail   string    `json:"thumbnail"`
-	CreatedAt   time.Time `json:"createdAt"`
-	CompletedAt time.Time `json:"completedAt"`
-	Status      string    `json:"status"`
-	ResourceID  int       `json:"resourceId"`
-	Codec       string    `json:"codec"`
-	FileSize    int64     `json:"fileSize,omitempty"`
+	DurationSeconds float64   `json:"durationSeconds,omitempty"`
+	Format          string    `json:"format,omitempty"`
+	ID              string    `json:"id"`
+	TaskID          string    `json:"taskId"`
+	SiteID          string    `json:"siteId"`
+	Kind            string    `json:"kind"`
+	Title           string    `json:"title"`
+	SourceURL       string    `json:"sourceUrl"`
+	FinalPath       string    `json:"finalPath"`
+	Thumbnail       string    `json:"thumbnail"`
+	CreatedAt       time.Time `json:"createdAt"`
+	CompletedAt     time.Time `json:"completedAt"`
+	Status          string    `json:"status"`
+	ResourceID      int       `json:"resourceId"`
+	Codec           string    `json:"codec"`
+	FileSize        int64     `json:"fileSize,omitempty"`
 }
 
 var taskIDPattern = regexp.MustCompile("^[a-f0-9]{32}$")
@@ -66,6 +71,17 @@ func readHistory(dir string) ([]DownloadRecord, error) {
 	records := []DownloadRecord{}
 	if err = json.Unmarshal(data, &records); err != nil {
 		return nil, err
+	}
+	for i := range records {
+		r := &records[i]
+		if r.FileSize == 0 && r.FinalPath != "" {
+			if info, err := os.Stat(r.FinalPath); err == nil && info.Mode().IsRegular() {
+				r.FileSize = info.Size()
+			}
+		}
+		if r.Format == "" {
+			r.Format = strings.TrimPrefix(strings.ToLower(filepath.Ext(r.FinalPath)), ".")
+		}
 	}
 	sort.SliceStable(records, func(i, j int) bool { return records[i].CreatedAt.After(records[j].CreatedAt) })
 	return records, nil
@@ -167,6 +183,12 @@ func (s *DesktopService) saveRecord(record DownloadRecord, cover string) (Downlo
 	data, err := thumbnailInput(record, cover)
 	if err == nil {
 		data, err = makeThumbnail(data)
+	}
+	if err != nil && record.Kind == "image" && cover != "" {
+		data, err = thumbnailInput(DownloadRecord{}, cover)
+		if err == nil {
+			data, err = makeThumbnail(data)
+		}
 	}
 	s.historyMu.Lock()
 	defer s.historyMu.Unlock()
@@ -273,4 +295,30 @@ func (s *DesktopService) OpenDownloadRecord(id, action string) error {
 		}
 	}
 	return fmt.Errorf("无法打开这条下载记录")
+}
+
+// DownloadDuration 按需补读旧记录，工具或文件不可用时仍保留历史。
+func (s *DesktopService) DownloadDuration(id string) float64 {
+	records, err := s.DownloadHistory()
+	if err != nil {
+		return 0
+	}
+	for _, record := range records {
+		if record.ID != id || (record.Kind != "video" && record.Kind != "audio") {
+			continue
+		}
+		if record.DurationSeconds > 0 {
+			return record.DurationSeconds
+		}
+		info, err := os.Stat(record.FinalPath)
+		if err != nil || !info.Mode().IsRegular() {
+			return 0
+		}
+		probe, err := downloader.ProbeMedia(context.Background(), record.FinalPath)
+		if err != nil {
+			return 0
+		}
+		return probe.Seconds()
+	}
+	return 0
 }

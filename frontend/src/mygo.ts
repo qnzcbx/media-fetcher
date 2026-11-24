@@ -20,6 +20,10 @@ export interface BiliQRSession {
 }
 
 export interface DownloadParams {
+  Mode: string;
+  AudioFormat: string;
+  PreviewURLs: string[];
+  CoverPreview: string;
   TaskID: string;
   URL: string;
   AccountID: string;
@@ -31,6 +35,8 @@ export interface DownloadParams {
 }
 
 export interface DownloadRecord {
+  durationSeconds?: number;
+  format?: string;
   id: string;
   taskId: string;
   siteId: string;
@@ -117,6 +123,8 @@ export interface Window {}
 
 export const DesktopService = {
   cancelDownload: bind<[], void>("DesktopService.CancelDownload", () => []),
+  /** DownloadDuration 按需补读旧记录，工具或文件不可用时仍保留历史。 */
+  downloadDuration: bind<[string], number>("DesktopService.DownloadDuration", (id: string) => [id]),
   downloadHistory: bind<[], DownloadRecord[]>("DesktopService.DownloadHistory", () => []),
   extract: bind<[string, string], MediaInfoResponse>("DesktopService.Extract", (urlStr: string, accountID: string) => [urlStr, accountID]),
   fetchPreviewBase64: bind<[string, string], string>("DesktopService.FetchPreviewBase64", (imgUrl: string, siteId: string) => [imgUrl, siteId]),

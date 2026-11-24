@@ -14,7 +14,7 @@ func TestDesktopService_StartDownload_Concurrency(t *testing.T) {
 	}
 
 	// 模拟第一次启动任务，应当成功
-	err1 := s.StartDownload(DownloadParams{URL: "invalid"})
+	err1 := s.StartDownload(DownloadParams{URL: "invalid", Mode: "video", VideoID: 80, AudioID: -1})
 	if err1 != nil {
 		t.Fatalf("第一次启动任务失败: %v", err1)
 	}
@@ -25,7 +25,7 @@ func TestDesktopService_StartDownload_Concurrency(t *testing.T) {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		err2 = s.StartDownload(DownloadParams{})
+		err2 = s.StartDownload(DownloadParams{URL: "invalid", Mode: "video", VideoID: 80, AudioID: -1})
 	}()
 
 	wg.Wait()
@@ -40,7 +40,7 @@ func TestDesktopService_StartDownload_Concurrency(t *testing.T) {
 	time.Sleep(100 * time.Millisecond)
 
 	// 第三次启动任务，应当成功
-	err3 := s.StartDownload(DownloadParams{})
+	err3 := s.StartDownload(DownloadParams{URL: "invalid", Mode: "video", VideoID: 80, AudioID: -1})
 	if err3 != nil {
 		t.Fatalf("第三次启动任务失败 (之前的任务取消后状态未正确清理): %v", err3)
 	}

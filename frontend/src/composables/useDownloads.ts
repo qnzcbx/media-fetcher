@@ -145,7 +145,7 @@ export function createDownloads(api = downloadAPI) {
 }
 
 export const progressPercent = (progress?: ProgressInfo) =>
-  progress && progress.stage !== "muxing" && progress.total > 0
+  progress && !["muxing","remuxing","transcoding"].includes(progress.stage) && progress.total > 0
     ? Math.floor(Math.max(0, Math.min(1, progress.downloaded / progress.total)) * 100)
     : undefined;
 

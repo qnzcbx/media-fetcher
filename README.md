@@ -10,6 +10,9 @@ Media Fetcher 是基于 Go Core、MyGo 和 Vue 3 的桌面媒体解析与下载�
 - 「我的下载」以封面与缩略图展示逐资源进度，支持取消、重试和浏览本地历史。
 - 下载完成后可打开原页面、本地文件或所在目录。移除记录会保留下载文件。视频通过 FFmpeg Stream Copy 合并音轨。
 
+- Bilibili 支持完整 MP4、无声 MP4、M4A 和 MP3，桌面端遇到同名文件自动加序号。
+- 下载详情显示实际文件大小和可读取的媒体时长，图库支持 WebP 缩略图。
+
 ## Supported Sites
 
 | 站点 | 支持范围 |
@@ -21,7 +24,7 @@ Bilibili 短链请先展开为完整视频链接。
 
 ## Getting Started
 
-在 Windows 上准备 Go 1.27.4（见 `go.mod`）、能运行项目 Vite 版本的 Node.js，以及 pnpm。本次构建使用 Node.js 22.22.2 和 pnpm 11.1.2。音视频合并需要 FFmpeg，可将其加入 PATH。
+在 Windows 上准备 Go 1.27.4（见 `go.mod`）、能运行项目 Vite 版本的 Node.js，以及 pnpm。本次构建使用 Node.js 22.22.2 和 pnpm 11.1.2。完整视频合并、需要重新封装的轨道和 MP3 转码需要 FFmpeg。MP3 使用 libmp3lame。建议同时将 FFprobe 加入 PATH，用于确认单轨容器及读取实际媒体时长。
 
 从仓库根目录运行：
 

@@ -1,10 +1,11 @@
 <script setup lang="ts">
-import { X } from "@lucide/vue";
+import { ref, computed } from "vue";
+import { Music, X } from "@lucide/vue";
 import VideoQualityGrid from "./VideoQualityGrid.vue";
 import AudioSelector from "./AudioSelector.vue";
 import ImageSelectionGrid from "./ImageSelectionGrid.vue";
 
-defineProps<{
+const props = defineProps<{
   mediaInfo: any;
   previewMap: Record<string, string>;
 
@@ -24,7 +25,7 @@ defineProps<{
 
 const emit = defineEmits<{
   (e: "close"): void;
-  (e: "startDownload"): void;
+  (e: "startDownload", mode: string, format: string): void;
 
   (e: "update:selectedVideo", id: number, codec: string): void;
   (e: "update:selectedAudio", id: number): void;
@@ -32,6 +33,20 @@ const emit = defineEmits<{
   (e: "toggleAllImages", totalImages: any[]): void;
   (e: "unlock"): void;
 }>();
+const mode = ref("complete");
+const format = ref("m4a");
+const available = computed(() => [
+  { id: "complete", label: "完整视频", enabled: props.selectedVideoID >= 0 && props.selectedAudioID >= 0 },
+  { id: "audio", label: "仅音频", enabled: props.selectedAudioID >= 0 },
+  { id: "video", label: "仅视频", enabled: props.selectedVideoID >= 0 },
+]);
+const chosen = computed(() => available.value.find(item => item.id === mode.value && item.enabled)
+  ?? available.value.find(item => item.enabled));
+const images = computed(() => !!props.mediaInfo.images?.length);
+const cover = computed(() => {
+  const value = props.previewMap[props.mediaInfo.coverUrl];
+  return value?.startsWith("data:image/") ? value : "";
+});
 </script>
 
 <template>
@@ -44,8 +59,17 @@ const emit = defineEmits<{
       <div class="rmodal-body">
         <p v-if="parseError" class="error-msg" role="alert">{{ parseError }}</p>
         <!-- Videos -->
-        <div v-if="mediaInfo.videoStreams && mediaInfo.videoStreams.length > 0">
+        <div v-if="!images">
+          <div class="mode-picker" role="group" aria-label="下载模式">
+            <button v-for="item in available" :key="item.id" :disabled="!item.enabled" :aria-pressed="chosen?.id === item.id" @click="mode = item.id">{{ item.label }}</button>
+          </div>
+          <div v-if="chosen?.id === 'audio'" class="audio-cover">
+            <img v-if="cover" :src="cover" alt="" />
+            <Music v-else :size="24" />
+            <span>音频资源</span>
+          </div>
           <VideoQualityGrid
+            v-if="chosen?.id !== 'audio'"
             :videoStreams="uniqueVideoStreams"
             :previewMap="previewMap"
             :coverUrl="mediaInfo.coverUrl"
@@ -57,10 +81,16 @@ const emit = defineEmits<{
           />
 
           <AudioSelector
+            v-if="chosen?.id !== 'video' && selectedAudioID >= 0"
             :audioStreams="mediaInfo.audioStreams"
             :modelValue="selectedAudioID"
             @update:modelValue="(val) => $emit('update:selectedAudio', val)"
           />
+          <div v-if="chosen?.id === 'audio'" class="mode-picker" role="group" aria-label="输出格式">
+            <span>输出格式</span>
+            <button title="优先保留 AAC 音轨" :aria-pressed="format === 'm4a'" @click="format = 'm4a'">M4A</button>
+            <button title="通过 FFmpeg 转码为 MP3" :aria-pressed="format === 'mp3'" @click="format = 'mp3'">MP3</button>
+          </div>
         </div>
 
         <!-- Images -->
@@ -85,10 +115,10 @@ const emit = defineEmits<{
         <button
           class="btn-primary"
           style="width: 100%; justify-content: center"
-          @click="$emit('startDownload')"
-          :disabled="downloadBusy || (mediaInfo.images?.length ? !selectedImages.length : selectedVideoID < 0 && selectedAudioID < 0)"
+          @click="emit('startDownload', images ? 'images' : chosen?.id ?? '', !images && chosen?.id === 'audio' ? format : '')"
+          :disabled="downloadBusy || (images ? !selectedImages.length : !chosen)"
         >
-          下载
+          {{ !images && chosen?.id === "audio" ? "下载 " + format.toUpperCase() : "下载" }}
         </button>
       </div>
     </div>
@@ -96,6 +126,13 @@ const emit = defineEmits<{
 </template>
 
 <style scoped>
+.mode-picker { display:flex; align-items:center; gap:8px; margin:0 0 14px; }
+.mode-picker button { border:1px solid var(--border); color:inherit; background:var(--input-bg); border-radius:8px; padding:6px 13px; cursor:pointer; }
+.mode-picker button[aria-pressed="true"] { background:var(--primary); color:#202427; }
+.mode-picker button:disabled { opacity:.45; cursor:default; }
+.audio-cover { display:flex; align-items:center; gap:14px; margin-bottom:16px; }
+.audio-cover img { width:75px; height:75px; object-fit:cover; border-radius:10px; }
+
 .resource-modal {
   background: var(--card-bg);
   border-radius: 16px;

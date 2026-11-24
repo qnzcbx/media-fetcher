@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, watch, computed } from "vue";
-import { Image, Play, Ellipsis, Check } from "@lucide/vue";
+import { formatFileSize, formatDuration } from "../../utils/fileMetadata";
+import { Image, Play, Music, Ellipsis, Check } from "@lucide/vue";
 import { downloadAPI } from "../../api/download";
 import type { GalleryCard } from "../../composables/useDownloads";
 import DownloadProgressOverlay from "./DownloadProgressOverlay.vue";
@@ -21,18 +22,31 @@ const emit = defineEmits<{
 const thumbnail = ref("");
 const menu = ref(false);
 const imageFailed = ref(false);
-watch(() => [thumbnail.value, props.card.preview], () => { imageFailed.value = false; });
+watch(
+  () => [thumbnail.value, props.card.preview],
+  () => {
+    imageFailed.value = false;
+  },
+);
 
-watch(() => [props.card.id, props.card.thumbnail], async (_, __, onCleanup) => {
-  let current = true;
-  onCleanup(() => { current = false; });
-  thumbnail.value = "";
-  if (!props.card.thumbnail) return;
-  try {
-    const data = await downloadAPI.thumbnail(props.card.id);
-    if (current) thumbnail.value = data;
-  } catch { /* 无可用缩略图时显示本地占位。 */ }
-}, { immediate: true });
+watch(
+  () => [props.card.id, props.card.thumbnail],
+  async (_, __, onCleanup) => {
+    let current = true;
+    onCleanup(() => {
+      current = false;
+    });
+    thumbnail.value = "";
+    if (!props.card.thumbnail) return;
+    try {
+      const data = await downloadAPI.thumbnail(props.card.id);
+      if (current) thumbnail.value = data;
+    } catch {
+      /* 无可用缩略图时显示本地占位。 */
+    }
+  },
+  { immediate: true },
+);
 
 const pick = (action: string) => {
   menu.value = false;
@@ -55,27 +69,64 @@ const displayTitle = computed(() => {
   return props.card.title || "未知文件";
 });
 
-const displaySize = computed(() => {
-  if (!props.card.fileSize) return "已完成";
-  const mb = props.card.fileSize / (1024 * 1024);
-  if (mb < 1) {
-    return `${Math.round(props.card.fileSize / 1024)} KB`;
+const recoveredDuration = ref<number>();
+let attemptedId = "";
+const recoverDuration = async () => {
+  const { id, status, kind, durationSeconds } = props.card;
+  if (status !== "done" || kind === "image" || durationSeconds || attemptedId === id) return;
+  attemptedId = id;
+  recoveredDuration.value = undefined;
+  try {
+    const seconds = await downloadAPI.duration(id);
+    if (props.card.id === id) recoveredDuration.value = seconds;
+  } catch {
+    /* 旧记录缺少时长时继续展示可用数据。 */
   }
-  return `${Math.round(mb * 10) / 10} MB`;
+};
+const metadata = computed(() => {
+  const size = props.card.fileSize;
+  const sizeText = size ? formatFileSize(size) : "";
+  const duration =
+    props.card.kind !== "image"
+      ? formatDuration(props.card.durationSeconds || recoveredDuration.value)
+      : "";
+  return [sizeText, duration].filter(Boolean).join(" · ");
 });
 </script>
 
 <template>
-  <div class="list-item" @click="handleItemClick" :class="{ selectable: isSelectionMode, selected: isSelected }" @contextmenu.prevent="!isSelectionMode && (menu = !menu)" @keydown.esc="menu = false">
+  <div
+    @mouseenter="recoverDuration"
+    @focusin="recoverDuration"
+    class="list-item"
+    @click="handleItemClick"
+    :class="{ selectable: isSelectionMode, selected: isSelected }"
+    @contextmenu.prevent="!isSelectionMode && (menu = !menu)"
+    @keydown.esc="menu = false"
+  >
     <div v-if="isSelectionMode" class="checkbox" :class="{ selected: isSelected }">
       <Check v-if="isSelected" :size="14" color="#fff" strokeWidth="3" />
     </div>
 
     <div class="thumbnail-wrapper">
       <div class="cover">
-        <img v-if="!imageFailed && (thumbnail || card.preview?.startsWith('data:image/'))" :src="thumbnail || card.preview" alt="" @error="imageFailed = true" />
+        <img
+          v-if="!imageFailed && (thumbnail || card.preview?.startsWith('data:image/'))"
+          :src="thumbnail || card.preview"
+          alt=""
+          @error="imageFailed = true"
+        />
         <Image v-else class="placeholder" aria-hidden="true" />
-        <Play v-if="card.kind === 'video' && card.status === 'done'" class="play" aria-hidden="true" />
+        <Music
+          v-if="card.kind === 'audio' && card.status === 'done'"
+          class="play"
+          aria-hidden="true"
+        />
+        <Play
+          v-if="card.kind === 'video' && card.status === 'done'"
+          class="play"
+          aria-hidden="true"
+        />
         <Transition name="fade"><DownloadProgressOverlay :card="card" /></Transition>
       </div>
     </div>
@@ -84,12 +135,22 @@ const displaySize = computed(() => {
       <div class="title" :title="displayTitle">{{ displayTitle }}</div>
       <div class="meta">
         <span v-if="card.status === 'running' && card.progress">
-          {{ card.progress.stage === 'muxing' ? '合并中...' : (card.progress.total > 0 ? `${Math.floor(card.progress.downloaded / 1024 / 1024 * 10) / 10} MB / ${Math.floor(card.progress.total / 1024 / 1024 * 10) / 10} MB` : '下载中...') }}
+          {{
+            card.progress.stage === "muxing"
+              ? "合并中..."
+              : card.progress.total > 0
+                ? `${Math.floor((card.progress.downloaded / 1024 / 1024) * 10) / 10} MB / ${Math.floor((card.progress.total / 1024 / 1024) * 10) / 10} MB`
+                : "下载中..."
+          }}
         </span>
         <span v-else-if="card.status === 'failed'">下载失败</span>
         <span v-else-if="card.status === 'cancelled'">已取消</span>
-        <span v-else-if="card.status === 'queued' || card.status === 'cancelling'">{{ card.status === 'cancelling' ? '取消中...' : '排队中...' }}</span>
-        <span v-else>{{ displaySize }}</span>
+        <span v-else-if="card.status === 'queued' || card.status === 'cancelling'">
+          {{
+            card.status === "cancelling" ? "取消中..." : "排队中..."
+          }}
+        </span>
+        <span v-else>{{ metadata }}</span>
       </div>
     </div>
 
@@ -106,8 +167,22 @@ const displaySize = computed(() => {
         <template v-if="card.status === 'failed' || card.status === 'cancelled'">
           <button v-if="card.retry" :disabled="busy" @click.stop="pick('retry')">重试</button>
         </template>
-        <button v-if="['done','failed','cancelled'].includes(card.status)" @click.stop="pick('remove')">移除记录</button>
-        <button v-else :disabled="card.status === 'cancelling'" @click.stop="menu = false; emit('cancel')">取消下载</button>
+        <button
+          v-if="['done', 'failed', 'cancelled'].includes(card.status)"
+          @click.stop="pick('remove')"
+        >
+          移除记录
+        </button>
+        <button
+          v-else
+          :disabled="card.status === 'cancelling'"
+          @click.stop="
+            menu = false;
+            emit('cancel');
+          "
+        >
+          取消下载
+        </button>
       </div>
     </div>
   </div>
@@ -188,7 +263,9 @@ img {
   color: #fff;
   fill: #fff;
 }
-.cover :deep(.shade) { z-index:2; }
+.cover :deep(.shade) {
+  z-index: 2;
+}
 
 .info {
   flex: 1;
@@ -220,7 +297,8 @@ img {
   cursor: pointer;
   border-radius: 6px;
 }
-.more-btn:hover, .more-btn[aria-expanded="true"] {
+.more-btn:hover,
+.more-btn[aria-expanded="true"] {
   background: var(--border);
   color: var(--text-main);
 }
@@ -232,7 +310,7 @@ img {
   background: var(--card-bg);
   border: 1px solid var(--border);
   border-radius: 8px;
-  box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
   padding: 4px;
   min-width: 110px;
   display: flex;
@@ -253,6 +331,10 @@ img {
   background: var(--input-bg);
 }
 
-.fade-leave-active { transition: opacity .2s ease; }
-.fade-leave-to { opacity: 0; }
+.fade-leave-active {
+  transition: opacity 0.2s ease;
+}
+.fade-leave-to {
+  opacity: 0;
+}
 </style>

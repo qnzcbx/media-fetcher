@@ -22,7 +22,6 @@ import (
 	"media-fetcher/core/extractor"
 	"media-fetcher/core/extractor/bilibili"
 	"media-fetcher/core/extractor/lofter"
-	"media-fetcher/pkg/fsutil"
 	"media-fetcher/pkg/vault"
 )
 
@@ -37,6 +36,8 @@ type DesktopService struct {
 	activeDownload bool
 	// 预览缓存
 	previewCache sync.Map
+	previewMu    sync.Mutex
+	previewKeys  []string
 	historyDir   string
 	historyMu    sync.Mutex
 }
@@ -200,10 +201,16 @@ func (s *DesktopService) FetchPreviewBase64(imgUrl string, siteId string) (strin
 		contentType = "image/jpeg"
 	}
 	b64 := fmt.Sprintf("data:%s;base64,%s", contentType, base64.StdEncoding.EncodeToString(b))
-	if siteId == "bilibili" {
-		s.previewCache.Clear()
-		s.previewCache.Store(imgUrl, b64)
+	s.previewMu.Lock()
+	if len(s.previewKeys) >= 32 {
+		s.previewCache.Delete(s.previewKeys[0])
+		s.previewKeys = s.previewKeys[1:]
 	}
+	if _, ok := s.previewCache.Load(imgUrl); !ok {
+		s.previewKeys = append(s.previewKeys, imgUrl)
+	}
+	s.previewCache.Store(imgUrl, b64)
+	s.previewMu.Unlock()
 	return b64, nil
 }
 
@@ -264,6 +271,11 @@ func (s *DesktopService) PollBiliQRCode(qrcodeKey string) (PollResult, error) {
 }
 
 type DownloadParams struct {
+	Mode          string
+	AudioFormat   string
+	PreviewURLs   []string
+	CoverPreview  string
+	previews      map[string]string
 	TaskID        string
 	URL           string
 	AccountID     string
@@ -288,6 +300,19 @@ type ProgressInfo struct {
 }
 
 func (s *DesktopService) StartDownload(params DownloadParams) error {
+	if err := validateDownload(params); err != nil {
+		return err
+	}
+	if len(params.CoverPreview) > base64.StdEncoding.EncodedLen(2<<20)+128 {
+		params.CoverPreview = ""
+	}
+	previews := make(map[string]string)
+	for _, key := range params.PreviewURLs[:min(len(params.PreviewURLs), 32)] {
+		if value, ok := s.previewCache.Load(key); ok {
+			previews[key] = value.(string)
+		}
+	}
+	params.previews = previews
 	s.downloadMu.Lock()
 	if s.activeDownload {
 		s.downloadMu.Unlock()
@@ -312,6 +337,10 @@ func (s *DesktopService) StartDownload(params DownloadParams) error {
 			} else {
 				stage = "error"
 				message = "下载失败，请重试"
+				var outputErr *outputFailure
+				if errors.As(err, &outputErr) {
+					message = outputErr.Error()
+				}
 			}
 		}
 		cancel()
@@ -341,37 +370,6 @@ func (s *DesktopService) CancelDownload() {
 	}
 }
 
-func safePublish(src, dst string) error {
-	err := fsutil.PublishFile(src, dst, fsutil.StrategyReplace)
-	if err == nil {
-		return nil
-	}
-
-	// 跨卷发布：复制到目标同目录下的临时文件，再同卷原子发布
-	dstDir := filepath.Dir(dst)
-	tempDst, err2 := os.CreateTemp(dstDir, ".publish-tmp-*")
-	if err2 != nil {
-		return err
-	}
-	tempName := tempDst.Name()
-	defer os.Remove(tempName)
-
-	srcFile, err2 := os.Open(src)
-	if err2 != nil {
-		tempDst.Close()
-		return err
-	}
-	defer srcFile.Close()
-
-	_, err2 = io.Copy(tempDst, srcFile)
-	tempDst.Close()
-	if err2 != nil {
-		return err
-	}
-
-	return fsutil.PublishFile(tempName, dst, fsutil.StrategyReplace)
-}
-
 func (s *DesktopService) doDownload(ctx context.Context, params DownloadParams) error {
 	ext, err := s.registry.Find(params.URL)
 	if err != nil {
@@ -385,6 +383,10 @@ func (s *DesktopService) doDownload(ctx context.Context, params DownloadParams) 
 		return fmt.Errorf("解析失败: %v", err)
 	}
 
+	imagesOnly := len(media.Images) > 0 && len(media.VideoStreams) == 0 && len(media.AudioStreams) == 0
+	if (params.Mode == "images") != imagesOnly {
+		return errors.New("资源类型已变化，请重新解析")
+	}
 	createdAt := time.Now()
 	complete := func(itemID, kind, path string, resourceID int) {
 		var fileSize int64
@@ -397,10 +399,25 @@ func (s *DesktopService) doDownload(ctx context.Context, params DownloadParams) 
 			CompletedAt: time.Now(), Status: "done", ResourceID: resourceID, Codec: params.VideoCodec,
 			FileSize: fileSize,
 		}
-		cover := ""
-		if value, ok := s.previewCache.Load(media.CoverURL); ok {
-			cover = value.(string)
+		record.Format = strings.TrimPrefix(strings.ToLower(filepath.Ext(path)), ".")
+		if kind != "image" {
+			if probe, err := downloader.ProbeMedia(ctx, path); err == nil {
+				record.DurationSeconds = probe.Seconds()
+			}
 		}
+		cover := params.CoverPreview
+		if cover == "" {
+			cover = params.previews[media.CoverURL]
+		}
+		if kind == "image" {
+			for _, img := range media.Images {
+				if img.Index == resourceID {
+					cover = params.previews[img.URL]
+					break
+				}
+			}
+		}
+
 		message := ""
 		if params.TaskID != "" {
 			var err error
@@ -431,8 +448,15 @@ func (s *DesktopService) doDownload(ctx context.Context, params DownloadParams) 
 		outputDir = filepath.Join(home, "Downloads")
 	}
 
+	// 创建独立临时工作目录
+	workDir, err := os.MkdirTemp("", "media-fetcher-work-*")
+	if err != nil {
+		return fmt.Errorf("创建临时工作目录失败: %v", err)
+	}
+	defer os.RemoveAll(workDir)
+
 	// LOFTER 图片下载逻辑
-	if len(media.Images) > 0 && len(media.VideoStreams) == 0 && len(media.AudioStreams) == 0 {
+	if imagesOnly {
 		var imagesToDownload []extractor.ImageItem
 		if len(params.SelectedImage) > 0 {
 			selectedMap := make(map[int]bool)
@@ -462,7 +486,7 @@ func (s *DesktopService) doDownload(ctx context.Context, params DownloadParams) 
 				filename = fmt.Sprintf("%s_%03d.jpg", media.ID, img.Index)
 			}
 			opts := downloader.DownloadOptions{
-				OutputDir: outputDir,
+				OutputDir: workDir,
 				Filename:  filename,
 				OnProgress: func(downloaded, total int64) {
 					s.emitDownload(params.TaskID, itemID, ProgressInfo{
@@ -483,6 +507,9 @@ func (s *DesktopService) doDownload(ctx context.Context, params DownloadParams) 
 					}
 				}
 			}
+			if dlErr == nil {
+				path, dlErr = publishUnique(ctx, path, filepath.Join(outputDir, filepath.Base(path)))
+			}
 			if dlErr != nil {
 				if ctx.Err() != nil {
 					return ctx.Err()
@@ -495,13 +522,6 @@ func (s *DesktopService) doDownload(ctx context.Context, params DownloadParams) 
 
 		return nil
 	}
-
-	// 创建独立临时工作目录
-	workDir, err := os.MkdirTemp("", "media-fetcher-work-*")
-	if err != nil {
-		return fmt.Errorf("创建临时工作目录失败: %v", err)
-	}
-	defer os.RemoveAll(workDir)
 
 	var downloadedVideo, downloadedAudio string
 	title := downloader.SanitizeFilename(media.Title)
@@ -599,33 +619,37 @@ func (s *DesktopService) doDownload(ctx context.Context, params DownloadParams) 
 		}
 	}
 
+	format, kind, resourceID := "mp4", "video", params.VideoID
+	staged := filepath.Join(workDir, "output.mp4")
 	if downloadedVideo != "" && downloadedAudio != "" {
-		s.emitDownload(params.TaskID, "media", ProgressInfo{Stage: "muxing", Message: "正在合并音视频..."})
-		ffmpegPath, err := downloader.FindFFmpeg()
-		if err != nil {
-			return fmt.Errorf("合并失败: 未找到 FFmpeg: %v", err)
-		}
-		finalOut := filepath.Join(outputDir, fmt.Sprintf("%s.mp4", title))
-		err = downloader.MuxVideoAudio(ctx, ffmpegPath, downloadedVideo, downloadedAudio, finalOut)
-		if err != nil {
+		s.emitDownload(params.TaskID, "media", ProgressInfo{Stage: "muxing"})
+		if err := downloader.MuxVideoAudio(ctx, "", downloadedVideo, downloadedAudio, staged); err != nil {
 			return err
 		}
-		complete("media", "video", finalOut, params.VideoID)
-	} else if downloadedVideo != "" {
-		finalOut := filepath.Join(outputDir, fmt.Sprintf("%s.mp4", title))
-		if err := safePublish(downloadedVideo, finalOut); err != nil {
-			return fmt.Errorf("文件发布失败: %v", err)
-		}
-		complete("media", "video", finalOut, params.VideoID)
-	} else if downloadedAudio != "" {
-		finalOut := filepath.Join(outputDir, fmt.Sprintf("%s.m4a", title))
-		if err := safePublish(downloadedAudio, finalOut); err != nil {
-			return fmt.Errorf("文件发布失败: %v", err)
-		}
-		complete("media", "audio", finalOut, params.AudioID)
 	} else {
-		return fmt.Errorf("未下载任何内容")
+		input := downloadedVideo
+		if input == "" {
+			input = downloadedAudio
+			format, kind, resourceID = "m4a", "audio", params.AudioID
+			if params.AudioFormat == "mp3" {
+				format = "mp3"
+			}
+		}
+		if input == "" {
+			return errors.New("未下载任何内容")
+		}
+		staged, err = downloader.PrepareSingleTrack(ctx, input, filepath.Join(workDir, "output."+format), format, func(stage string) {
+			s.emitDownload(params.TaskID, "media", ProgressInfo{Stage: stage})
+		})
+		if err != nil {
+			return &outputFailure{err}
+		}
 	}
+	finalOut, err := publishUnique(ctx, staged, filepath.Join(outputDir, title+"."+format))
+	if err != nil {
+		return fmt.Errorf("文件发布失败: %w", err)
+	}
+	complete("media", kind, finalOut, resourceID)
 
 	return nil
 }
@@ -635,3 +659,5 @@ func (s *DesktopService) SelectDirectory() (string, error) {
 	// 作为安全和克制的选择，暂时回退默认而不引入未受官方支持的包。
 	return "", fmt.Errorf("not implemented")
 }
+
+type outputFailure struct{ error }
