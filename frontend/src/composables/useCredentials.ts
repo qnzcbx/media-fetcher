@@ -1,138 +1,119 @@
 import { ref, onUnmounted } from "vue";
 import { getAccounts, generateBiliQRCode, pollBiliQRCode } from "../api/credential";
+import type { MediaInfoResponse, SafeAccount } from "../mygo";
+import { extractSupportedURL, getSiteIdFromURL } from "../utils/url";
 
-export type SafeAccount = {
-  siteId: string;
-  accountId: string;
-  name: string;
-  avatarUrl: string;
-  status: string;
-  isActive: boolean;
-};
+export const isValidAccount = (account: SafeAccount) => account.status === "active";
+export const findActiveAccount = (accounts: SafeAccount[], siteId: string) =>
+  accounts.find((account) => account.siteId === siteId && account.isActive && isValidAccount(account));
 
-// 单例共享状态
-const accounts = ref<SafeAccount[]>([]);
-let isInitialized = false;
+export function createCredentialState(query: typeof getAccounts) {
+  const accounts = ref<SafeAccount[]>([]);
+  const isInitialized = ref(false);
+  const credentialError = ref("");
+  let pending: Promise<boolean> | undefined;
+
+  const fetchAccounts = () => pending ??= Promise.resolve().then(query).then((result) => {
+    accounts.value = result ?? [];
+    isInitialized.value = true;
+    credentialError.value = "";
+    return true;
+  }).catch(() => {
+    isInitialized.value = false;
+    credentialError.value = "无法读取凭证，请重试。";
+    return false;
+  }).finally(() => { pending = undefined; });
+
+  const ensureInitialized = () => pending ?? (isInitialized.value ? Promise.resolve(true) : fetchAccounts());
+  const getActiveAccountId = (siteId: string) =>
+    isInitialized.value ? findActiveAccount(accounts.value, siteId)?.accountId ?? "" : "";
+
+  return { accounts, isInitialized, credentialError, fetchAccounts, ensureInitialized, getActiveAccountId };
+}
+
+export function resolveParseTarget(input: string, getAccountId: (site: string) => string) {
+  const url = extractSupportedURL(input);
+  const siteId = getSiteIdFromURL(url);
+  return { url, siteId, accountId: siteId ? getAccountId(siteId) : "" };
+}
+
+export const canUnlock = (media: MediaInfoResponse | null, initialized: boolean, accountId: string) =>
+  media?.siteId === "bilibili" && media.isAnonymous && initialized && !accountId;
+
+const credentials = createCredentialState(getAccounts);
 
 export const useCredentials = () => {
   const showAuthManage = ref(false);
   const showBiliQRModal = ref(false);
   const qrUrl = ref("");
   const qrStatus = ref("");
-  let pollTimer: ReturnType<typeof setTimeout> | null = null;
-  let isPolling = false;
-
-  const fetchAccounts = async () => {
-    try {
-      accounts.value = (await getAccounts()) || [];
-      isInitialized = true;
-    } catch (e) {
-      console.error(e);
-      // 查询失败不能伪装成已登录或改变初始化状态以防误判，但为了流程不卡死，也可以标记为 true 或在 UI 中显示错误
-      isInitialized = true;
-    }
-  };
-
-  // 保证只有第一次被调用时才会执行
-  const ensureInitialized = async () => {
-    if (!isInitialized) {
-      await fetchAccounts();
-    }
-  };
-
-  // 立即在模块加载或组件使用时触发一次
-  ensureInitialized();
-
-  const getActiveAccountId = (siteId: string): string => {
-    const active = accounts.value.find(
-      (a) => a.isActive && a.siteId === siteId && a.status === "Valid"
-    );
-    return active ? active.accountId : "";
-  };
+  let pollTimer: ReturnType<typeof setTimeout> | undefined;
+  let session = 0;
 
   const stopPolling = () => {
-    isPolling = false;
-    if (pollTimer) {
-      clearTimeout(pollTimer);
-      pollTimer = null;
-    }
+    session++;
+    clearTimeout(pollTimer);
+  };
+  const closeQRModal = () => {
+    stopPolling();
+    showBiliQRModal.value = false;
   };
 
-  const pollQRCode = async (key: string) => {
-    if (!isPolling || !showBiliQRModal.value) return;
-    try {
-      const res = await pollBiliQRCode(key);
-      // 如果已经停止轮询，则忽略延迟的旧请求结果
-      if (!isPolling) return;
-
-      qrStatus.value = res.message;
-      if (res.state === "confirmed") {
-        await fetchAccounts();
-        stopPolling();
-        if (loginSuccessCallback) {
-          loginSuccessCallback();
-          loginSuccessCallback = null;
-        }
-        setTimeout(() => {
-          showBiliQRModal.value = false;
-        }, 1500);
-      } else if (res.state === "expired" || res.state === "failed") {
-        stopPolling();
-      } else {
-        pollTimer = setTimeout(() => pollQRCode(key), 3000);
-      }
-    } catch (e) {
-      if (!isPolling) return;
-      qrStatus.value = "轮询错误";
-      pollTimer = setTimeout(() => pollQRCode(key), 3000);
-    }
-  };
-
-  let loginSuccessCallback: (() => void) | null = null;
-
-  const loginBilibili = async (onSuccess?: () => void) => {
+  const loginBilibili = async (onSuccess?: (accountId: string, isCurrent: () => boolean) => Promise<void>) => {
+    stopPolling();
+    const id = session;
+    const isCurrent = () => id === session;
     showAuthManage.value = false;
     showBiliQRModal.value = true;
     qrStatus.value = "申请二维码中...";
     qrUrl.value = "";
-    isPolling = true;
-    if (pollTimer) clearTimeout(pollTimer);
-    loginSuccessCallback = onSuccess || null;
+
+    const poll = async (key: string) => {
+      try {
+        const res = await pollBiliQRCode(key);
+        if (!isCurrent()) return;
+        qrStatus.value = res.message;
+        if (res.state === "confirmed") {
+          // 先等旧查询结束，再读取扫码成功后的凭证。
+          await credentials.ensureInitialized();
+          if (!isCurrent()) return;
+          const refreshed = await credentials.fetchAccounts();
+          if (!isCurrent()) return;
+          const accountId = credentials.getActiveAccountId("bilibili");
+          if (!refreshed || !accountId) {
+            qrStatus.value = credentials.credentialError.value || "未找到有效的 Bilibili 活动账号";
+            stopPolling();
+            return;
+          }
+          await onSuccess?.(accountId, isCurrent);
+          if (isCurrent()) closeQRModal();
+        } else if (res.state === "expired" || res.state === "failed" || res.state === "cancelled") {
+          stopPolling();
+        } else {
+          pollTimer = setTimeout(() => void poll(key), 3000);
+        }
+      } catch {
+        if (!isCurrent()) return;
+        qrStatus.value = "扫码状态查询失败，请重新登录。";
+        stopPolling();
+      }
+    };
 
     try {
       const res = await generateBiliQRCode();
-      if (!isPolling) return;
+      if (!isCurrent()) return;
       qrUrl.value = res.url;
       qrStatus.value = "请使用手机 Bilibili App 扫描二维码";
-      pollQRCode(res.qrcodeKey);
-    } catch (e: any) {
-      if (!isPolling) return;
-      qrStatus.value = "错误: " + e.message;
-      isPolling = false;
+      void poll(res.qrcodeKey);
+    } catch {
+      if (!isCurrent()) return;
+      qrStatus.value = "二维码申请失败，请重试。";
+      stopPolling();
     }
   };
 
-  const closeQRModal = () => {
-    showBiliQRModal.value = false;
-    stopPolling();
-    loginSuccessCallback = null;
-  };
+  void credentials.ensureInitialized();
+  onUnmounted(stopPolling);
 
-  onUnmounted(() => {
-    stopPolling();
-  });
-
-  return {
-    accounts,
-    showAuthManage,
-    showBiliQRModal,
-    qrUrl,
-    qrStatus,
-    fetchAccounts,
-    ensureInitialized,
-    getActiveAccountId,
-    loginBilibili,
-    closeQRModal,
-    stopPolling,
-  };
+  return { ...credentials, showAuthManage, showBiliQRModal, qrUrl, qrStatus, loginBilibili, closeQRModal };
 };

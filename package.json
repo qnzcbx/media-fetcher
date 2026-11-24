@@ -7,6 +7,7 @@
     "mygo:dev": "mygo dev",
     "mygo:build": "mygo build",
     "mygo:generate": "mygo generate",
+    "test:credentials": "node frontend/test/credential-contract.test.mjs",
     "dev": "vite frontend",
     "build": "vue-tsc -b frontend && vite build frontend",
     "preview": "vite preview frontend"

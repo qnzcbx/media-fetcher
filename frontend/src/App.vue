@@ -9,13 +9,13 @@ import CredentialModal from "./components/credential/CredentialModal.vue";
 import BilibiliQRModal from "./components/credential/BilibiliQRModal.vue";
 import DownloadStatus from "./components/download/DownloadStatus.vue";
 
-import { useCredentials } from "./composables/useCredentials";
+import type { MediaInfoResponse } from "./mygo";
+import { canUnlock, resolveParseTarget, useCredentials } from "./composables/useCredentials";
 import { useMediaParser } from "./composables/useMediaParser";
 import { useMediaPreview } from "./composables/useMediaPreview";
 import { useMediaSelection } from "./composables/useMediaSelection";
 import { useDownloads } from "./composables/useDownloads";
 import { getUniqueVideoStreams } from "./utils/media";
-import { getSiteIdFromURL, extractSupportedURL } from "./utils/url";
 
 // Composables
 const {
@@ -25,6 +25,8 @@ const {
   qrUrl,
   qrStatus,
   ensureInitialized,
+  isInitialized,
+  credentialError,
   getActiveAccountId,
   loginBilibili,
   closeQRModal,
@@ -46,45 +48,57 @@ const { isDownloading, progressInfo, doDownload, doCancel } = useDownloads();
 
 // State
 const url = ref("");
-let normalizedUrl = "";
-let usedAccountId = "";
+let snapshot: { url: string; media: MediaInfoResponse } | undefined;
+const isPreparing = ref(false);
 
-// Event Handlers
+const openCredentials = () => {
+  showAuthManage.value = true;
+  void ensureInitialized();
+};
+
+const applyResult = (url: string, media: MediaInfoResponse) => {
+  snapshot = { url, media };
+  initSelection(media);
+  void loadPreviews(media);
+};
+
 const handleParse = async () => {
-  if (!url.value.trim() || isParsing.value) return;
-
-  await ensureInitialized(); // 确保账号已加载
-
-  const parsedUrl = extractSupportedURL(url.value.trim());
-  if (!parsedUrl) {
+  if (!url.value.trim() || isPreparing.value || isParsing.value) return;
+  const input = url.value;
+  let target = resolveParseTarget(input, getActiveAccountId);
+  if (!target.url) {
     parseError.value = "未找到支持的链接 (Bilibili / LOFTER)";
     return;
   }
-  url.value = parsedUrl;
 
-  const siteId = getSiteIdFromURL(parsedUrl);
-  const accId = siteId ? getActiveAccountId(siteId) : "";
-
-  const res = await parse(parsedUrl, accId);
-  if (res) {
-    normalizedUrl = parsedUrl; // 记录本次成功解析的 URL
-    usedAccountId = accId;
-    initSelection(res);
-    loadPreviews(res);
+  isPreparing.value = true;
+  try {
+    const ready = await ensureInitialized();
+    if (!ready && target.siteId === "bilibili") {
+      parseError.value = credentialError.value;
+      return;
+    }
+    target = resolveParseTarget(input, getActiveAccountId);
+    if (url.value === input) url.value = target.url;
+    const res = await parse(target.url, target.accountId);
+    if (res) applyResult(target.url, res);
+  } finally {
+    isPreparing.value = false;
   }
 };
 
 const handleStartDownload = async () => {
-  if (!mediaInfo.value) return;
+  if (!snapshot || mediaInfo.value !== snapshot.media) return;
+  const { url, media } = snapshot;
 
   const params = {
-    URL: normalizedUrl, // 使用上次解析成功的规范化 URL
-    AccountID: usedAccountId, // 使用当时的 account
+    URL: url,
+    AccountID: media.usedAccountId,
     OutputDir: "", // 后端默认回退到系统 Downloads 目录
-    VideoID: mediaInfo.value.images?.length ? -1 : selectedVideoID.value,
-    VideoCodec: mediaInfo.value.images?.length ? "" : selectedVideoCodec.value,
-    AudioID: mediaInfo.value.images?.length ? -1 : selectedAudioID.value,
-    SelectedImage: mediaInfo.value.images?.length ? selectedImages.value : [],
+    VideoID: media.images?.length ? -1 : selectedVideoID.value,
+    VideoCodec: media.images?.length ? "" : selectedVideoCodec.value,
+    AudioID: media.images?.length ? -1 : selectedAudioID.value,
+    SelectedImage: media.images?.length ? selectedImages.value : [],
   };
 
   clearMediaInfo(); // 关闭弹窗
@@ -96,29 +110,21 @@ const uniqueVideoStreams = computed(() => {
   return getUniqueVideoStreams(mediaInfo.value.videoStreams || []);
 });
 
-const showUnlockCard = computed(() => {
-  if (!mediaInfo.value) return false;
-  const siteId = getSiteIdFromURL(normalizedUrl);
-  return siteId === "bilibili" && !usedAccountId && !getActiveAccountId("bilibili");
-});
+const showUnlockCard = computed(() =>
+  canUnlock(mediaInfo.value, isInitialized.value, getActiveAccountId("bilibili"))
+);
 
 const handleUnlock = () => {
-  loginBilibili(async () => {
-    const siteId = getSiteIdFromURL(normalizedUrl);
-    const accId = siteId ? getActiveAccountId(siteId) : "";
-    if (!accId) return;
-
-    // Preserve old selection
+  const original = snapshot;
+  if (!original || !showUnlockCard.value || isParsing.value) return;
+  void loginBilibili(async (accountId, isCurrent) => {
+    const canApply = () => isCurrent() && snapshot === original && mediaInfo.value === original.media;
+    if (!canApply() || isParsing.value) return;
     const oldAudioId = selectedAudioID.value;
-
-    const res = await parse(normalizedUrl, accId);
+    const res = await parse(original.url, accountId, canApply);
     if (res) {
-      usedAccountId = accId;
-      initSelection(res);
-      loadPreviews(res);
-
-      // Try to restore old audio choice
-      if (res.audioStreams?.some((a: any) => a.id === oldAudioId)) {
+      applyResult(original.url, res);
+      if (res.audioStreams?.some((audio) => audio.id === oldAudioId)) {
         selectedAudioID.value = oldAudioId;
       }
     }
@@ -128,21 +134,21 @@ const handleUnlock = () => {
 
 <template>
   <div class="app-container">
-    <AppHeader @openCredentials="showAuthManage = true" />
+    <AppHeader @openCredentials="openCredentials" />
 
     <main class="main-content">
       <BrandWordmark />
 
       <LinkInput
         v-model="url"
-        :isParsing="isParsing"
+        :isParsing="isPreparing || isParsing"
         @submit="handleParse"
         @pasteError="(msg) => (parseError = msg)"
       />
 
       <SupportedSites />
 
-      <div class="error-msg" v-if="parseError">{{ parseError }}</div>
+      <div class="error-msg" v-if="!mediaInfo && (parseError || credentialError)" role="alert">{{ parseError || credentialError }}</div>
 
       <DownloadStatus
         v-if="isDownloading && progressInfo"
@@ -155,6 +161,7 @@ const handleUnlock = () => {
     <ResourcePicker
       v-if="mediaInfo"
       :mediaInfo="mediaInfo"
+      :parseError="parseError || credentialError"
       :previewMap="previewMap"
       :selectedVideoID="selectedVideoID"
       :selectedVideoCodec="selectedVideoCodec"
@@ -175,6 +182,7 @@ const handleUnlock = () => {
     <CredentialModal
       v-if="showAuthManage"
       :accounts="accounts"
+      :credentialError="credentialError"
       @close="showAuthManage = false"
       @loginBilibili="() => loginBilibili()"
     />

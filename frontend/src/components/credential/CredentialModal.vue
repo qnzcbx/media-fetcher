@@ -1,10 +1,15 @@
 <script setup lang="ts">
 import BaseModal from "../common/BaseModal.vue";
-import type { SafeAccount } from "../../composables/useCredentials";
+import { computed } from "vue";
+import type { SafeAccount } from "../../mygo";
+import { findActiveAccount } from "../../composables/useCredentials";
 
-defineProps<{
+const props = defineProps<{
   accounts: SafeAccount[];
+  credentialError: string;
 }>();
+
+const account = computed(() => props.credentialError ? undefined : findActiveAccount(props.accounts, "bilibili"));
 
 defineEmits<{
   (e: "close"): void;
@@ -14,13 +19,14 @@ defineEmits<{
 
 <template>
   <BaseModal title="凭证管理" @close="$emit('close')">
+    <p v-if="credentialError" role="alert">{{ credentialError }}</p>
     <div class="auth-card">
       <h4>Bilibili</h4>
       <div
-        v-if="accounts.find((a) => a.isActive && a.siteId === 'bilibili')"
+        v-if="account"
         class="auth-status active"
       >
-        {{ accounts.find((a) => a.isActive && a.siteId === "bilibili")?.name }} (已登录)
+        {{ account.name }} (已登录)
       </div>
       <div v-else class="auth-action">
         <button

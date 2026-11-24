@@ -18,6 +18,7 @@ defineProps<{
   // We'll pass the stream unique list directly
   uniqueVideoStreams: any[];
   showUnlockCard?: boolean;
+  parseError?: string;
 }>();
 
 const emit = defineEmits<{
@@ -40,6 +41,7 @@ const emit = defineEmits<{
         <button class="icon-btn" @click="$emit('close')"><X class="icon" /></button>
       </div>
       <div class="rmodal-body">
+        <p v-if="parseError" class="error-msg" role="alert">{{ parseError }}</p>
         <!-- Videos -->
         <div v-if="mediaInfo.videoStreams && mediaInfo.videoStreams.length > 0">
           <VideoQualityGrid

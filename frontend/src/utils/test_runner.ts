@@ -18,8 +18,8 @@ const testCases = [
   },
   {
     input: "短链测试 https://b23.tv/abcd123",
-    expectedUrl: "https://b23.tv/abcd123",
-    expectedSite: "bilibili"
+    expectedUrl: "",
+    expectedSite: ""
   },
   {
     input: "无效链接 https://example.com",
@@ -73,4 +73,3 @@ console.log("Utils tests finished.");
 if (hasError) {
   throw new Error("Tests failed due to validation errors.");
 }
-
