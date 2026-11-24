@@ -15,7 +15,7 @@ import { useMediaPreview } from "./composables/useMediaPreview";
 import { useMediaSelection } from "./composables/useMediaSelection";
 import { useDownloads } from "./composables/useDownloads";
 import { getUniqueVideoStreams } from "./utils/media";
-import { getSiteIdFromURL } from "./utils/url";
+import { getSiteIdFromURL, extractSupportedURL } from "./utils/url";
 
 // Composables
 const {
@@ -24,8 +24,10 @@ const {
   showBiliQRModal,
   qrUrl,
   qrStatus,
+  ensureInitialized,
   getActiveAccountId,
   loginBilibili,
+  closeQRModal,
 } = useCredentials();
 
 const { isParsing, parseError, mediaInfo, parse, clearMediaInfo } = useMediaParser();
@@ -51,12 +53,21 @@ let usedAccountId = "";
 const handleParse = async () => {
   if (!url.value.trim() || isParsing.value) return;
 
-  const siteId = getSiteIdFromURL(url.value.trim());
+  await ensureInitialized(); // 确保账号已加载
+
+  const parsedUrl = extractSupportedURL(url.value.trim());
+  if (!parsedUrl) {
+    parseError.value = "未找到支持的链接 (Bilibili / LOFTER)";
+    return;
+  }
+  url.value = parsedUrl;
+
+  const siteId = getSiteIdFromURL(parsedUrl);
   const accId = siteId ? getActiveAccountId(siteId) : "";
 
-  const res = await parse(url.value.trim(), accId);
+  const res = await parse(parsedUrl, accId);
   if (res) {
-    normalizedUrl = url.value.trim(); // 记录本次成功解析的 URL
+    normalizedUrl = parsedUrl; // 记录本次成功解析的 URL
     usedAccountId = accId;
     initSelection(res);
     loadPreviews(res);
@@ -84,6 +95,35 @@ const uniqueVideoStreams = computed(() => {
   if (!mediaInfo.value) return [];
   return getUniqueVideoStreams(mediaInfo.value.videoStreams || []);
 });
+
+const showUnlockCard = computed(() => {
+  if (!mediaInfo.value) return false;
+  const siteId = getSiteIdFromURL(normalizedUrl);
+  return siteId === "bilibili" && !usedAccountId && !getActiveAccountId("bilibili");
+});
+
+const handleUnlock = () => {
+  loginBilibili(async () => {
+    const siteId = getSiteIdFromURL(normalizedUrl);
+    const accId = siteId ? getActiveAccountId(siteId) : "";
+    if (!accId) return;
+
+    // Preserve old selection
+    const oldAudioId = selectedAudioID.value;
+
+    const res = await parse(normalizedUrl, accId);
+    if (res) {
+      usedAccountId = accId;
+      initSelection(res);
+      loadPreviews(res);
+
+      // Try to restore old audio choice
+      if (res.audioStreams?.some((a: any) => a.id === oldAudioId)) {
+        selectedAudioID.value = oldAudioId;
+      }
+    }
+  });
+};
 </script>
 
 <template>
@@ -121,12 +161,14 @@ const uniqueVideoStreams = computed(() => {
       :selectedAudioID="selectedAudioID"
       :selectedImages="selectedImages"
       :uniqueVideoStreams="uniqueVideoStreams"
+      :showUnlockCard="showUnlockCard"
       @close="clearMediaInfo"
       @startDownload="handleStartDownload"
       @update:selectedVideo="(id, codec) => { selectedVideoID = id; selectedVideoCodec = codec; }"
       @update:selectedAudio="(id) => (selectedAudioID = id)"
       @toggleImage="toggleImage"
       @toggleAllImages="toggleAllImages"
+      @unlock="handleUnlock"
     />
 
     <!-- Auth Manage Modal -->
@@ -134,7 +176,7 @@ const uniqueVideoStreams = computed(() => {
       v-if="showAuthManage"
       :accounts="accounts"
       @close="showAuthManage = false"
-      @loginBilibili="loginBilibili"
+      @loginBilibili="() => loginBilibili()"
     />
 
     <!-- Auth QR Modal -->
@@ -142,7 +184,7 @@ const uniqueVideoStreams = computed(() => {
       v-if="showBiliQRModal"
       :qrUrl="qrUrl"
       :qrStatus="qrStatus"
-      @close="showBiliQRModal = false"
+      @close="closeQRModal"
     />
   </div>
 </template>

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { CheckCircle } from "@lucide/vue";
+import { CheckCircle, LockKeyhole } from "@lucide/vue";
 
 defineProps<{
   videoStreams: any[];
@@ -7,15 +7,32 @@ defineProps<{
   coverUrl: string;
   selectedVideoID: number;
   selectedVideoCodec: string;
+  showUnlockCard?: boolean;
 }>();
 
 defineEmits<{
   (e: "select", id: number, codec: string): void;
+  (e: "unlock"): void;
 }>();
 </script>
 
 <template>
   <div class="video-grid">
+    <div
+      v-if="showUnlockCard"
+      class="video-card unlock-card"
+      @click="$emit('unlock')"
+    >
+      <div class="video-cover">
+        <img v-if="previewMap[coverUrl]" :src="previewMap[coverUrl]" />
+        <div v-else class="preview-placeholder">加载中...</div>
+        <div class="unlock-overlay">
+          <LockKeyhole :size="28" color="#fff" />
+        </div>
+      </div>
+      <div class="video-quality">点击解锁高品质</div>
+    </div>
+
     <div
       v-for="item in videoStreams"
       :key="item.index"
@@ -78,6 +95,26 @@ defineEmits<{
   width: 100%;
   height: 100%;
   object-fit: cover;
+}
+
+.unlock-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.unlock-card {
+  border-color: transparent;
+}
+
+.unlock-card .video-quality {
+  color: var(--primary);
 }
 
 .preview-placeholder {

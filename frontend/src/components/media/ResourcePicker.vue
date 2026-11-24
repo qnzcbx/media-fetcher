@@ -17,6 +17,7 @@ defineProps<{
   // computed properties or helpers can be passed or we can compute inside?
   // We'll pass the stream unique list directly
   uniqueVideoStreams: any[];
+  showUnlockCard?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -27,6 +28,7 @@ const emit = defineEmits<{
   (e: "update:selectedAudio", id: number): void;
   (e: "toggleImage", idx: number): void;
   (e: "toggleAllImages", totalImages: any[]): void;
+  (e: "unlock"): void;
 }>();
 </script>
 
@@ -46,7 +48,9 @@ const emit = defineEmits<{
             :coverUrl="mediaInfo.coverUrl"
             :selectedVideoID="selectedVideoID"
             :selectedVideoCodec="selectedVideoCodec"
+            :showUnlockCard="showUnlockCard"
             @select="(id, codec) => $emit('update:selectedVideo', id, codec)"
+            @unlock="$emit('unlock')"
           />
 
           <AudioSelector

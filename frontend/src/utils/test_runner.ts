@@ -2,6 +2,7 @@ import { extractSupportedURL, getSiteIdFromURL } from "./url";
 import { getUniqueVideoStreams, getBestAudioStreamId } from "./media";
 
 console.log("Running utils tests...");
+let hasError = false;
 
 // Test URL Extraction
 const testCases = [
@@ -31,10 +32,12 @@ for (const tc of testCases) {
   const extracted = extractSupportedURL(tc.input);
   if (extracted !== tc.expectedUrl) {
     console.error(`URL test failed for "${tc.input}". Expected "${tc.expectedUrl}", got "${extracted}"`);
+    hasError = true;
   }
   const site = getSiteIdFromURL(extracted);
   if (site !== tc.expectedSite) {
     console.error(`Site ID test failed for "${tc.input}". Expected "${tc.expectedSite}", got "${site}"`);
+    hasError = true;
   }
 }
 
@@ -48,9 +51,11 @@ const mockVideoStreams: any[] = [
 const unique = getUniqueVideoStreams(mockVideoStreams);
 if (unique.length !== 2) {
   console.error(`Media grouping failed. Expected 2 unique streams, got ${unique.length}`);
+  hasError = true;
 }
 if (unique[0].stream.codec !== "avc1") {
   console.error(`Media grouping failed to prioritize AVC. Got codec ${unique[0].stream.codec}`);
+  hasError = true;
 }
 
 const mockAudioStreams: any[] = [
@@ -61,6 +66,11 @@ const mockAudioStreams: any[] = [
 const bestAudio = getBestAudioStreamId(mockAudioStreams);
 if (bestAudio !== 30280) {
   console.error(`Best audio selection failed. Expected 30280, got ${bestAudio}`);
+  hasError = true;
 }
 
 console.log("Utils tests finished.");
+if (hasError) {
+  throw new Error("Tests failed due to validation errors.");
+}
+
