@@ -7,7 +7,8 @@ Media Fetcher 是基于 Go Core、MyGo 和 Vue 3 的桌面媒体解析与下载�
 - 从纯链接或分享文案中识别 Bilibili 视频与 LOFTER 公开帖子。
 - 预览视频封面和图片缩略图，选择实际可用的视频画质、音轨或多张图片。
 - 通过 Bilibili 二维码在本机登录，使用当前账号权限获取可用媒体。
-- 查看下载进度或取消下载，使用 FFmpeg Stream Copy 合并音视频。
+- 「我的下载」以封面与缩略图展示逐资源进度，支持取消、重试和浏览本地历史。
+- 下载完成后可打开原页面、本地文件或所在目录。移除记录会保留下载文件。视频通过 FFmpeg Stream Copy 合并音轨。
 
 ## Supported Sites
 
@@ -79,6 +80,6 @@ Windows 凭证通过当前用户作用域的 DPAPI 加密后保存在本机。�
 
 ## Development Status
 
-当前处于 Windows 桌面预览阶段。可用媒体受站点接口和账号权限影响。持久化下载图库、下载历史及多任务并发尚未交付。
+当前处于 Windows 桌面预览阶段。可用媒体受站点接口和账号权限影响。下载历史和应用缩略图保存在 Windows 用户数据目录的 `media-fetcher/downloads` 下。当前每次运行一个下载任务。
 
 运行 `pnpm run test:credentials` 检查前端凭证契约，运行 `go test -count=1 ./...` 检查 Go 核心与桌面服务。

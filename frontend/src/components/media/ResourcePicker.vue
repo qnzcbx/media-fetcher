@@ -19,6 +19,7 @@ defineProps<{
   uniqueVideoStreams: any[];
   showUnlockCard?: boolean;
   parseError?: string;
+  downloadBusy?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -85,7 +86,7 @@ const emit = defineEmits<{
           class="btn-primary"
           style="width: 100%; justify-content: center"
           @click="$emit('startDownload')"
-          :disabled="selectedImages.length === 0 && !mediaInfo.videoStreams?.length"
+          :disabled="downloadBusy || (mediaInfo.images?.length ? !selectedImages.length : selectedVideoID < 0 && selectedAudioID < 0)"
         >
           下载
         </button>

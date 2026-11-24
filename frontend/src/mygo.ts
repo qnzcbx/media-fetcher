@@ -20,6 +20,7 @@ export interface BiliQRSession {
 }
 
 export interface DownloadParams {
+  TaskID: string;
   URL: string;
   AccountID: string;
   OutputDir: string;
@@ -27,6 +28,22 @@ export interface DownloadParams {
   VideoCodec: string;
   AudioID: number;
   SelectedImage: number[];
+}
+
+export interface DownloadRecord {
+  id: string;
+  taskId: string;
+  siteId: string;
+  kind: string;
+  title: string;
+  sourceUrl: string;
+  finalPath: string;
+  thumbnail: string;
+  createdAt: string;
+  completedAt: string;
+  status: string;
+  resourceId: number;
+  codec: string;
 }
 
 export interface ImageItem {
@@ -57,6 +74,9 @@ export interface PollResult {
 }
 
 export interface ProgressInfo {
+  taskId: string;
+  itemId: string;
+  record?: DownloadRecord;
   /** "video", "audio", "muxing", "done", "error" */
   stage: string;
   downloaded: number;
@@ -96,11 +116,15 @@ export interface Window {}
 
 export const DesktopService = {
   cancelDownload: bind<[], void>("DesktopService.CancelDownload", () => []),
+  downloadHistory: bind<[], DownloadRecord[]>("DesktopService.DownloadHistory", () => []),
   extract: bind<[string, string], MediaInfoResponse>("DesktopService.Extract", (urlStr: string, accountID: string) => [urlStr, accountID]),
   fetchPreviewBase64: bind<[string, string], string>("DesktopService.FetchPreviewBase64", (imgUrl: string, siteId: string) => [imgUrl, siteId]),
+  galleryThumbnail: bind<[string], string>("DesktopService.GalleryThumbnail", (id: string) => [id]),
   generateBiliQRCode: bind<[], BiliQRSession>("DesktopService.GenerateBiliQRCode", () => []),
   getAccounts: bind<[], SafeAccount[]>("DesktopService.GetAccounts", () => []),
+  openDownloadRecord: bind<[string, string], void>("DesktopService.OpenDownloadRecord", (id: string, action: string) => [id, action]),
   pollBiliQRCode: bind<[string], PollResult>("DesktopService.PollBiliQRCode", (qrcodeKey: string) => [qrcodeKey]),
+  removeDownloadRecord: bind<[string], void>("DesktopService.RemoveDownloadRecord", (id: string) => [id]),
   selectDirectory: bind<[], string>("DesktopService.SelectDirectory", () => []),
   setWindow: bind<[Window | null], void>("DesktopService.SetWindow", (w: Window | null) => [w]),
   startDownload: bind<[DownloadParams], void>("DesktopService.StartDownload", (params: DownloadParams) => [params]),

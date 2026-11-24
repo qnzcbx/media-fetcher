@@ -7,7 +7,7 @@
 <style scoped>
 .hero {
   text-align: center;
-  margin-bottom: 40px;
+  margin-bottom: 26px;
 }
 
 .hero h1 {

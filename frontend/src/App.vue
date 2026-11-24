@@ -7,7 +7,7 @@ import SupportedSites from "./components/home/SupportedSites.vue";
 import ResourcePicker from "./components/media/ResourcePicker.vue";
 import CredentialModal from "./components/credential/CredentialModal.vue";
 import BilibiliQRModal from "./components/credential/BilibiliQRModal.vue";
-import DownloadStatus from "./components/download/DownloadStatus.vue";
+import DownloadGallery from "./components/download/DownloadGallery.vue";
 
 import type { MediaInfoResponse } from "./mygo";
 import { canUnlock, resolveParseTarget, useCredentials } from "./composables/useCredentials";
@@ -44,7 +44,7 @@ const {
   toggleAllImages,
 } = useMediaSelection();
 
-const { isDownloading, progressInfo, doDownload, doCancel } = useDownloads();
+const { isDownloading, cards, error: downloadError, doDownload, doCancel, act } = useDownloads();
 
 // State
 const url = ref("");
@@ -101,8 +101,7 @@ const handleStartDownload = async () => {
     SelectedImage: media.images?.length ? selectedImages.value : [],
   };
 
-  clearMediaInfo(); // 关闭弹窗
-  await doDownload(params);
+  if (await doDownload(params, media, previewMap.value) && mediaInfo.value === media) clearMediaInfo();
 };
 
 const uniqueVideoStreams = computed(() => {
@@ -150,18 +149,15 @@ const handleUnlock = () => {
 
       <div class="error-msg" v-if="!mediaInfo && (parseError || credentialError)" role="alert">{{ parseError || credentialError }}</div>
 
-      <DownloadStatus
-        v-if="isDownloading && progressInfo"
-        :progressInfo="progressInfo"
-        @cancel="doCancel"
-      />
+      <DownloadGallery :cards="cards" :busy="isDownloading" :error="downloadError" @action="act" @cancel="doCancel" />
     </main>
 
     <!-- Resource Selection Modal -->
     <ResourcePicker
       v-if="mediaInfo"
       :mediaInfo="mediaInfo"
-      :parseError="parseError || credentialError"
+      :parseError="parseError || credentialError || downloadError"
+      :downloadBusy="isDownloading"
       :previewMap="previewMap"
       :selectedVideoID="selectedVideoID"
       :selectedVideoCodec="selectedVideoCodec"
@@ -199,9 +195,10 @@ const handleUnlock = () => {
 
 <style>
 /* Global styles are injected in main.ts */
+.app-container { overflow-y: auto; }
 .main-content {
   flex: 1;
-  padding: 80px 20px 40px;
+  padding: 18px 20px 24px;
   max-width: 720px;
   margin: 0 auto;
   width: 100%;

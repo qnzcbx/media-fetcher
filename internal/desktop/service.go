@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -36,6 +37,8 @@ type DesktopService struct {
 	activeDownload bool
 	// 预览缓存
 	previewCache sync.Map
+	historyDir   string
+	historyMu    sync.Mutex
 }
 
 func NewDesktopService() (*DesktopService, error) {
@@ -49,7 +52,12 @@ func NewDesktopService() (*DesktopService, error) {
 	reg.Register(bilibili.New(credService))
 	reg.Register(lofter.New(credService))
 
+	historyDir, err := historyDirectory()
+	if err != nil {
+		return nil, err
+	}
 	return &DesktopService{
+		historyDir:  historyDir,
 		credService: credService,
 		registry:    reg,
 	}, nil
@@ -70,7 +78,7 @@ type MediaInfoResponse struct {
 	UsedAccountID string                  `json:"usedAccountId"`
 	VideoStreams  []extractor.VideoStream `json:"videoStreams"`
 	AudioStreams  []extractor.AudioStream `json:"audioStreams"`
-	Images        []extractor.ImageItem       `json:"images"`
+	Images        []extractor.ImageItem   `json:"images"`
 }
 
 func (s *DesktopService) Extract(urlStr string, accountID string) (MediaInfoResponse, error) {
@@ -146,7 +154,7 @@ func (s *DesktopService) FetchPreviewBase64(imgUrl string, siteId string) (strin
 		}
 	} else if siteId == "bilibili" {
 		if !strings.Contains(imgUrl, "@") {
-			targetURL = imgUrl + "@400w.webp"
+			targetURL = imgUrl + "@400w.jpg"
 		}
 	}
 
@@ -179,17 +187,23 @@ func (s *DesktopService) FetchPreviewBase64(imgUrl string, siteId string) (strin
 		return "", fmt.Errorf("bad status: %d", resp.StatusCode)
 	}
 
-	b, err := io.ReadAll(io.LimitReader(resp.Body, 2<<20)) // max 2MB
+	b, err := io.ReadAll(io.LimitReader(resp.Body, (2<<20)+1))
 	if err != nil {
 		return "", err
 	}
 
+	if len(b) > 2<<20 {
+		return "", errors.New("预览图片过大")
+	}
 	contentType := resp.Header.Get("Content-Type")
 	if contentType == "" {
 		contentType = "image/jpeg"
 	}
 	b64 := fmt.Sprintf("data:%s;base64,%s", contentType, base64.StdEncoding.EncodeToString(b))
-	s.previewCache.Store(imgUrl, b64)
+	if siteId == "bilibili" {
+		s.previewCache.Clear()
+		s.previewCache.Store(imgUrl, b64)
+	}
 	return b64, nil
 }
 
@@ -250,6 +264,7 @@ func (s *DesktopService) PollBiliQRCode(qrcodeKey string) (PollResult, error) {
 }
 
 type DownloadParams struct {
+	TaskID        string
 	URL           string
 	AccountID     string
 	OutputDir     string
@@ -262,11 +277,14 @@ type DownloadParams struct {
 var ProgressEvent = mygo.NewEvent[ProgressInfo]("progress")
 
 type ProgressInfo struct {
-	Stage      string `json:"stage"` // "video", "audio", "muxing", "done", "error"
-	Downloaded int64  `json:"downloaded"`
-	Total      int64  `json:"total"`
-	Message    string `json:"message"`
-	FinalPath  string `json:"finalPath"`
+	TaskID     string          `json:"taskId"`
+	ItemID     string          `json:"itemId"`
+	Record     *DownloadRecord `json:"record,omitempty"`
+	Stage      string          `json:"stage"` // "video", "audio", "muxing", "done", "error"
+	Downloaded int64           `json:"downloaded"`
+	Total      int64           `json:"total"`
+	Message    string          `json:"message"`
+	FinalPath  string          `json:"finalPath"`
 }
 
 func (s *DesktopService) StartDownload(params DownloadParams) error {
@@ -276,28 +294,43 @@ func (s *DesktopService) StartDownload(params DownloadParams) error {
 		return fmt.Errorf("当前已有任务正在下载或取消中，请稍后再试")
 	}
 
+	if params.TaskID != "" && !taskIDPattern.MatchString(params.TaskID) {
+		s.downloadMu.Unlock()
+		return errors.New("无效的下载任务标识")
+	}
 	ctx, cancel := context.WithCancel(context.Background())
 	s.cancelDownload = cancel
 	s.activeDownload = true
 	s.downloadMu.Unlock()
 
 	go func() {
-		defer func() {
-			s.downloadMu.Lock()
-			s.cancelDownload = nil
-			s.activeDownload = false
-			s.downloadMu.Unlock()
-		}()
 		err := s.doDownload(ctx, params)
+		stage, message := "finished", ""
 		if err != nil {
 			if errors.Is(err, context.Canceled) || ctx.Err() != nil {
-				// 用户取消，不当作普通下载失败覆盖前端状态
+				stage = "cancelled"
 			} else {
-				ProgressEvent.Emit(s.win, ProgressInfo{Stage: "error", Message: err.Error()})
+				stage = "error"
+				message = "下载失败，请重试"
 			}
 		}
+		cancel()
+		s.downloadMu.Lock()
+		s.cancelDownload = nil
+		s.activeDownload = false
+		s.emitDownload(params.TaskID, "", ProgressInfo{Stage: stage, Message: message})
+		s.downloadMu.Unlock()
 	}()
+
 	return nil
+}
+
+func (s *DesktopService) emitDownload(taskID, itemID string, info ProgressInfo) {
+	if s.win == nil {
+		return
+	}
+	info.TaskID, info.ItemID = taskID, itemID
+	ProgressEvent.Emit(s.win, info)
 }
 
 func (s *DesktopService) CancelDownload() {
@@ -352,6 +385,27 @@ func (s *DesktopService) doDownload(ctx context.Context, params DownloadParams) 
 		return fmt.Errorf("解析失败: %v", err)
 	}
 
+	createdAt := time.Now()
+	complete := func(itemID, kind, path string, resourceID int) {
+		record := DownloadRecord{
+			ID: params.TaskID + "-" + itemID, TaskID: params.TaskID, SiteID: media.SiteID, Kind: kind,
+			Title: media.Title, SourceURL: cleanSource(params.URL), FinalPath: path, CreatedAt: createdAt,
+			CompletedAt: time.Now(), Status: "done", ResourceID: resourceID, Codec: params.VideoCodec,
+		}
+		cover := ""
+		if value, ok := s.previewCache.Load(media.CoverURL); ok {
+			cover = value.(string)
+		}
+		message := ""
+		if params.TaskID != "" {
+			var err error
+			record, err = s.saveRecord(record, cover)
+			if err != nil {
+				message = "文件已下载，历史记录保存失败"
+			}
+		}
+		s.emitDownload(params.TaskID, itemID, ProgressInfo{Stage: "done", FinalPath: path, Record: &record, Message: message})
+	}
 	client := s.credService.GetAnonymousClient(media.SiteID)
 	if media.UsedAccountID != "" {
 		if c, err := s.credService.GetClient(media.SiteID, media.UsedAccountID); err == nil {
@@ -372,63 +426,70 @@ func (s *DesktopService) doDownload(ctx context.Context, params DownloadParams) 
 		outputDir = filepath.Join(home, "Downloads")
 	}
 
-		// LOFTER 图片下载逻辑
-		if len(media.Images) > 0 && len(media.VideoStreams) == 0 && len(media.AudioStreams) == 0 {
-			var imagesToDownload []extractor.ImageItem
-			if len(params.SelectedImage) > 0 {
-				selectedMap := make(map[int]bool)
-				for _, idx := range params.SelectedImage {
-					selectedMap[idx] = true
-				}
-				for _, img := range media.Images {
-					if selectedMap[img.Index] {
-						imagesToDownload = append(imagesToDownload, img)
-					}
-				}
-			} else {
-				imagesToDownload = media.Images
+	// LOFTER 图片下载逻辑
+	if len(media.Images) > 0 && len(media.VideoStreams) == 0 && len(media.AudioStreams) == 0 {
+		var imagesToDownload []extractor.ImageItem
+		if len(params.SelectedImage) > 0 {
+			selectedMap := make(map[int]bool)
+			for _, idx := range params.SelectedImage {
+				selectedMap[idx] = true
 			}
-
-			if len(imagesToDownload) == 0 {
-				return fmt.Errorf("未选择任何要下载的图片")
-			}
-
-			ProgressEvent.Emit(s.win, ProgressInfo{Stage: "images", Message: fmt.Sprintf("准备下载 %d 张图片", len(imagesToDownload))})
-			for i, img := range imagesToDownload {
-				filename := fmt.Sprintf("%s_%s", media.ID, img.Filename)
-				if img.Filename == "" {
-					filename = fmt.Sprintf("%s_%03d.jpg", media.ID, img.Index)
-				}
-				opts := downloader.DownloadOptions{
-					OutputDir: outputDir,
-					Filename:  filename,
-					OnProgress: func(downloaded, total int64) {
-						ProgressEvent.Emit(s.win, ProgressInfo{
-							Stage:      "images",
-							Downloaded: downloaded,
-							Total:      total,
-							Message:    fmt.Sprintf("下载进度: %d/%d", i+1, len(imagesToDownload)),
-						})
-					},
-				}
-
-				var dlErr error
-				_, dlErr = d.Download(ctx, nil, img.URL, opts)
-				if dlErr != nil && len(img.BackupURLs) > 0 {
-					for _, backupURL := range img.BackupURLs {
-						_, dlErr = d.Download(ctx, nil, backupURL, opts)
-						if dlErr == nil {
-							break
-						}
-					}
-				}
-				if dlErr != nil {
-					return dlErr
+			for _, img := range media.Images {
+				if selectedMap[img.Index] {
+					imagesToDownload = append(imagesToDownload, img)
 				}
 			}
-			ProgressEvent.Emit(s.win, ProgressInfo{Stage: "done", Message: "图片下载完成", FinalPath: outputDir})
-			return nil
+		} else {
+			imagesToDownload = media.Images
 		}
+
+		if len(imagesToDownload) == 0 {
+			return fmt.Errorf("未选择任何要下载的图片")
+		}
+
+		for i, img := range imagesToDownload {
+			itemID := strconv.Itoa(img.Index)
+			if err := ctx.Err(); err != nil {
+				return err
+			}
+			filename := fmt.Sprintf("%s_%s", media.ID, img.Filename)
+			if img.Filename == "" {
+				filename = fmt.Sprintf("%s_%03d.jpg", media.ID, img.Index)
+			}
+			opts := downloader.DownloadOptions{
+				OutputDir: outputDir,
+				Filename:  filename,
+				OnProgress: func(downloaded, total int64) {
+					s.emitDownload(params.TaskID, itemID, ProgressInfo{
+						Stage:      "images",
+						Downloaded: downloaded,
+						Total:      total,
+						Message:    fmt.Sprintf("下载进度: %d/%d", i+1, len(imagesToDownload)),
+					})
+				},
+			}
+
+			path, dlErr := d.Download(ctx, nil, img.URL, opts)
+			if dlErr != nil && len(img.BackupURLs) > 0 {
+				for _, backupURL := range img.BackupURLs {
+					path, dlErr = d.Download(ctx, nil, backupURL, opts)
+					if dlErr == nil {
+						break
+					}
+				}
+			}
+			if dlErr != nil {
+				if ctx.Err() != nil {
+					return ctx.Err()
+				}
+				s.emitDownload(params.TaskID, itemID, ProgressInfo{Stage: "item-error", Message: "图片下载失败"})
+				continue
+			}
+			complete(itemID, "image", path, img.Index)
+		}
+
+		return nil
+	}
 
 	// 创建独立临时工作目录
 	workDir, err := os.MkdirTemp("", "media-fetcher-work-*")
@@ -476,7 +537,7 @@ func (s *DesktopService) doDownload(ctx context.Context, params DownloadParams) 
 			Filename:  "video.tmp",
 			Referer:   "https://www.bilibili.com",
 			OnProgress: func(downloaded, total int64) {
-				ProgressEvent.Emit(s.win, ProgressInfo{
+				s.emitDownload(params.TaskID, "media", ProgressInfo{
 					Stage:      "video",
 					Downloaded: downloaded,
 					Total:      total,
@@ -508,7 +569,7 @@ func (s *DesktopService) doDownload(ctx context.Context, params DownloadParams) 
 			Filename:  "audio.tmp",
 			Referer:   "https://www.bilibili.com",
 			OnProgress: func(downloaded, total int64) {
-				ProgressEvent.Emit(s.win, ProgressInfo{
+				s.emitDownload(params.TaskID, "media", ProgressInfo{
 					Stage:      "audio",
 					Downloaded: downloaded,
 					Total:      total,
@@ -534,7 +595,7 @@ func (s *DesktopService) doDownload(ctx context.Context, params DownloadParams) 
 	}
 
 	if downloadedVideo != "" && downloadedAudio != "" {
-		ProgressEvent.Emit(s.win, ProgressInfo{Stage: "muxing", Message: "正在合并音视频..."})
+		s.emitDownload(params.TaskID, "media", ProgressInfo{Stage: "muxing", Message: "正在合并音视频..."})
 		ffmpegPath, err := downloader.FindFFmpeg()
 		if err != nil {
 			return fmt.Errorf("合并失败: 未找到 FFmpeg: %v", err)
@@ -544,19 +605,19 @@ func (s *DesktopService) doDownload(ctx context.Context, params DownloadParams) 
 		if err != nil {
 			return err
 		}
-		ProgressEvent.Emit(s.win, ProgressInfo{Stage: "done", Message: "下载并合并完成", FinalPath: finalOut})
+		complete("media", "video", finalOut, params.VideoID)
 	} else if downloadedVideo != "" {
 		finalOut := filepath.Join(outputDir, fmt.Sprintf("%s.mp4", title))
 		if err := safePublish(downloadedVideo, finalOut); err != nil {
 			return fmt.Errorf("文件发布失败: %v", err)
 		}
-		ProgressEvent.Emit(s.win, ProgressInfo{Stage: "done", Message: "视频下载完成", FinalPath: finalOut})
+		complete("media", "video", finalOut, params.VideoID)
 	} else if downloadedAudio != "" {
 		finalOut := filepath.Join(outputDir, fmt.Sprintf("%s.m4a", title))
 		if err := safePublish(downloadedAudio, finalOut); err != nil {
 			return fmt.Errorf("文件发布失败: %v", err)
 		}
-		ProgressEvent.Emit(s.win, ProgressInfo{Stage: "done", Message: "音频下载完成", FinalPath: finalOut})
+		complete("media", "audio", finalOut, params.AudioID)
 	} else {
 		return fmt.Errorf("未下载任何内容")
 	}

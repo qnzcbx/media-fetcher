@@ -19,3 +19,5 @@ AGENTS.md
 accounts_meta.json*
 .credential-*.tmp
 *.log
+/downloads/history.json
+/downloads/thumbnails/
