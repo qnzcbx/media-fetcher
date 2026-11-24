@@ -4,7 +4,7 @@ import { ChevronLeft } from "@lucide/vue";
 import type { GalleryCard } from "../composables/useDownloads";
 import DownloadListItem from "../components/download/DownloadListItem.vue";
 import GallerySelectionBar from "../components/download/GallerySelectionBar.vue";
-import { useGallerySelection } from "../composables/useGallerySelection";
+import { selectableCount, useGallerySelection } from "../composables/useGallerySelection";
 
 const props = defineProps<{ cards: GalleryCard[]; busy: boolean; error: string }>();
 const emit = defineEmits<{
@@ -28,6 +28,7 @@ const {
   exitSelectionMode,
   toggleSelection,
   selectAll,
+  collectSelectableIds,
   selectedCount
 } = useGallerySelection();
 
@@ -36,10 +37,16 @@ watch(filter, () => {
 });
 
 const handleRemove = () => {
-  const confirm = window.confirm(`移除选中的 ${selectedCount.value} 条下载记录？本地文件将保留。`);
+  // 执行前按最新状态复核，活动任务不会被移除。
+  const ids = collectSelectableIds(props.cards);
+  if (!ids.length) {
+    exitSelectionMode();
+    return;
+  }
+  const confirm = window.confirm(`移除选中的 ${ids.length} 条下载记录？本地文件将保留。`);
   if (!confirm) return;
 
-  emit('removeSelected', Array.from(selectedIds.value));
+  emit('removeSelected', ids);
   exitSelectionMode();
 };
 </script>
@@ -87,7 +94,7 @@ const handleRemove = () => {
             :isSelected="selectedIds.has(card.id)"
             @action="(item: GalleryCard, action: string) => emit('action', item, action)"
             @cancel="emit('cancel')"
-            @toggleSelect="toggleSelection(card.id)"
+            @toggleSelect="toggleSelection(card)"
           />
           <div v-if="filtered.length === 0" class="empty-state">没有记录</div>
         </div>
@@ -97,7 +104,7 @@ const handleRemove = () => {
         v-if="isSelectionMode"
         class="selection-bar-footer"
         :count="selectedCount"
-        :totalSelectable="filtered.filter(c => !['running','cancelling','queued'].includes(c.status)).length"
+        :totalSelectable="selectableCount(filtered)"
         @remove="handleRemove"
         @selectAll="selectAll(filtered)"
       />

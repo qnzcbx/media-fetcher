@@ -1,6 +1,8 @@
 <script setup lang="ts">
+import type { AudioStream } from "../../mygo";
+
 defineProps<{
-  audioStreams: any[];
+  audioStreams: AudioStream[];
   modelValue: number;
 }>();
 
@@ -29,9 +31,11 @@ defineEmits<{
   display: flex;
   align-items: center;
   gap: 12px;
+  min-height: 44px;
+  padding: 0 16px;
   background: var(--input-bg);
-  padding: 12px 16px;
   border-radius: 8px;
+  box-sizing: border-box;
 }
 
 .audio-select {

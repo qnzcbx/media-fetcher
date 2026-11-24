@@ -1,4 +1,5 @@
 import { ref } from "vue";
+import type { ImageItem, MediaInfoResponse } from "../mygo";
 import { getUniqueVideoStreams, getBestAudioStreamId } from "../utils/media";
 
 export const useMediaSelection = () => {
@@ -7,7 +8,8 @@ export const useMediaSelection = () => {
   const selectedAudioID = ref(-1);
   const selectedImages = ref<number[]>([]);
 
-  const initSelection = (mediaInfo: any) => {
+  // 初始化真实可用的默认选择：最高兼容画质、最高带宽音轨、全部图片。
+  const initSelection = (mediaInfo: MediaInfoResponse) => {
     selectedVideoID.value = -1;
     selectedVideoCodec.value = "";
     selectedAudioID.value = -1;
@@ -26,7 +28,7 @@ export const useMediaSelection = () => {
     }
 
     if (mediaInfo.images && mediaInfo.images.length > 0) {
-      selectedImages.value = mediaInfo.images.map((img: any) => img.index);
+      selectedImages.value = mediaInfo.images.map((img) => img.index);
     }
   };
 
@@ -38,7 +40,7 @@ export const useMediaSelection = () => {
     }
   };
 
-  const toggleAllImages = (totalImages: any[]) => {
+  const toggleAllImages = (totalImages: ImageItem[]) => {
     if (!totalImages) return;
     if (selectedImages.value.length === totalImages.length) {
       selectedImages.value = [];

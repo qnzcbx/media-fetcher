@@ -54,6 +54,64 @@ try {
   assert.equal(await fast.doDownload({ ...params, SelectedImage: [1] }, media, {}), true);
   assert.equal(fast.isDownloading.value, false);
   assert.equal(fast.cards.value[0].status, "cancelled");
+
+  // 批量移除：部分失败时保留失败记录，并跳过活动任务。
+  const removeState = createDownloads({
+    start: async () => {},
+    cancel: async () => {},
+    history: async () => [],
+    remove: async (id) => {
+      if (id === "task-2") throw new Error("拒绝移除");
+    },
+  });
+  removeState.cards.value = [
+    { id: "task-1", status: "done" },
+    { id: "task-2", status: "done" },
+    { id: "task-3", status: "running" },
+  ];
+  await removeState.removeMultiple(["task-1", "task-2", "task-3", "missing"]);
+  assert.deepEqual(removeState.cards.value.map((card) => card.id), ["task-2", "task-3"]);
+  assert.equal(removeState.error.value, "部分记录移除失败，请重试");
+
+  // 批量移除期间重复提交只执行一次。
+  let calls = 0;
+  const guardState = createDownloads({
+    start: async () => {},
+    cancel: async () => {},
+    history: async () => [],
+    remove: async () => {
+      calls++;
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    },
+  });
+  guardState.cards.value = [{ id: "guard-1", status: "done" }];
+  await Promise.all([guardState.removeMultiple(["guard-1"]), guardState.removeMultiple(["guard-1"])]);
+  assert.equal(calls, 1);
+  assert.equal(guardState.cards.value.length, 0);
+
+  // 选择资格：活动任务不能单选，全选也只覆盖可移除记录。
+  const { useGallerySelection } = await vite.ssrLoadModule("/src/composables/useGallerySelection.ts");
+  const selection = useGallerySelection();
+  const doneCard = { id: "select-1", status: "done" };
+  const runningCard = { id: "select-2", status: "running" };
+  selection.toggleSelection(runningCard);
+  assert.equal(selection.selectedIds.value.has("select-2"), false);
+  selection.toggleSelection(doneCard);
+  assert.equal(selection.selectedIds.value.has("select-1"), true);
+  selection.toggleSelection(doneCard);
+  assert.equal(selection.selectedIds.value.has("select-1"), false);
+  selection.selectAll([doneCard, runningCard, { id: "select-3", status: "queued" }]);
+  assert.deepEqual([...selection.selectedIds.value], ["select-1"]);
+  assert.deepEqual(selection.collectSelectableIds([doneCard, runningCard]), ["select-1"]);
+
+  // 阶段文案统一：封装与转码在详情列表与封面遮罩使用同一映射。
+  const { isProcessingStage, stageLabel } = await vite.ssrLoadModule("/src/utils/downloadStatus.ts");
+  assert.equal(stageLabel("transcoding"), "转码中");
+  assert.equal(stageLabel("remuxing"), "封装中");
+  assert.equal(stageLabel("video"), "下载视频");
+  assert.equal(isProcessingStage("transcoding"), true);
+  assert.equal(isProcessingStage("video"), false);
+
   console.log("下载图库任务状态回归通过");
 } finally {
   await vite.close();

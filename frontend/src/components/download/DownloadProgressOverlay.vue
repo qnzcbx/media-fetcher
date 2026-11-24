@@ -1,10 +1,9 @@
 <script setup lang="ts">
 import { computed } from "vue";
 import { progressPercent, type GalleryCard } from "../../composables/useDownloads";
+import { isProcessingStage, stageLabel } from "../../utils/downloadStatus";
 const props = defineProps<{ card: GalleryCard }>();
-const processing = computed(() =>
-  ["muxing", "remuxing", "transcoding"].includes(props.card.progress?.stage ?? ""),
-);
+const processing = computed(() => isProcessingStage(props.card.progress?.stage));
 const percent = computed(() => progressPercent(props.card.progress));
 const label = computed(() => {
   const { status, progress } = props.card;
@@ -12,20 +11,7 @@ const label = computed(() => {
   if (status === "cancelled") return "已取消";
   if (status === "cancelling") return "取消中";
   if (status === "queued") return "等待下载";
-  switch (progress?.stage) {
-    case "video":
-      return "下载视频";
-    case "audio":
-      return "下载音频";
-    case "remuxing":
-      return "封装中";
-    case "transcoding":
-      return "转码中";
-    case "muxing":
-      return "合并中";
-    default:
-      return "下载图片";
-  }
+  return stageLabel(progress?.stage);
 });
 </script>
 

@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import { CheckCircle } from "@lucide/vue";
+import type { ImageItem } from "../../mygo";
 
 const props = defineProps<{
-  images: any[];
+  images: ImageItem[];
   previewMap: Record<string, string>;
   selectedImages: number[];
 }>();
@@ -20,7 +21,7 @@ const isAllSelected = () => {
 <template>
   <div class="image-selection-wrapper">
     <div class="image-header">
-      <label class="custom-checkbox" @click.prevent="$emit('toggleAll')">
+      <label class="custom-checkbox" @click.prevent="emit('toggleAll')">
         <input type="checkbox" :checked="isAllSelected()" />
         <span>全部 ({{ selectedImages.length }}/{{ images.length }})</span>
       </label>
@@ -31,7 +32,7 @@ const isAllSelected = () => {
         :key="img.index"
         class="video-card"
         :class="{ active: selectedImages.includes(img.index) }"
-        @click="$emit('toggle', img.index)"
+        @click="emit('toggle', img.index)"
       >
         <div class="video-cover image-cover">
           <img v-if="previewMap[img.url]" :src="previewMap[img.url]" />
@@ -62,7 +63,6 @@ const isAllSelected = () => {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
   gap: 16px;
-  margin-bottom: 24px;
 }
 
 .video-card {

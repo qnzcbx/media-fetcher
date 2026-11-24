@@ -1,23 +1,15 @@
-// --- 类型定义 ---
-export type VideoStream = {
-  id: number;
-  quality_label: string;
-  codec: string;
-  bandwidth: number;
-  need_auth: boolean;
+import type { AudioStream, VideoStream } from "../mygo";
+
+// 同一画质只保留一个编码，卡片渲染所需的唯一流信息。
+export type UniqueVideoStream = {
+  index: number;
+  stream: VideoStream;
 };
 
-export type AudioStream = {
-  id: number;
-  quality: string;
-  codec: string;
-  bandwidth: number;
-};
-
-export const getUniqueVideoStreams = (streams: VideoStream[]) => {
+export const getUniqueVideoStreams = (streams: VideoStream[]): UniqueVideoStream[] => {
   if (!streams || streams.length === 0) return [];
-  const unique = [];
-  const seen = new Set();
+  const unique: UniqueVideoStream[] = [];
+  const seen = new Set<string>();
 
   // 按照画质分组，同画质下优先保留 avc 编码（兼容性最好）
   // 为了做到这点，我们可以先排序

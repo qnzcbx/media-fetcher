@@ -1,6 +1,7 @@
 import { computed, onMounted, onUnmounted, ref } from "vue";
 import { downloadAPI } from "../api/download";
 import type { DownloadParams, DownloadRecord, MediaInfoResponse, ProgressInfo } from "../mygo";
+import { isActiveStatus, isProcessingStage } from "../utils/downloadStatus";
 
 type Request = Omit<DownloadParams, "TaskID">;
 export type GalleryCard = DownloadRecord & { preview?: string; progress?: ProgressInfo; retry?: Request };
@@ -8,6 +9,7 @@ export type GalleryCard = DownloadRecord & { preview?: string; progress?: Progre
 export function createDownloads(api = downloadAPI) {
   const cards = ref<GalleryCard[]>([]);
   const error = ref("");
+  const removing = ref(false);
   const active = ref<{ id: string; accepted: boolean; cancelling: boolean; terminal: boolean; cards: GalleryCard[] }>();
   const isDownloading = computed(() => !!active.value);
 
@@ -104,22 +106,29 @@ export function createDownloads(api = downloadAPI) {
   };
 
   const removeMultiple = async (ids: string[]) => {
+    if (removing.value) return;
+    // 只处理当前存在且允许移除的记录，活动任务跳过。
+    const targets = cards.value.filter((card) => ids.includes(card.id) && !isActiveStatus(card.status));
+    if (!targets.length) return;
+    removing.value = true;
+    error.value = "";
+    const removed: string[] = [];
     try {
-      error.value = "";
-      let hasError = false;
-      for (const id of ids) {
+      for (const card of targets) {
         try {
-          await api.remove(id);
+          await api.remove(card.id);
+          removed.push(card.id);
         } catch {
-          hasError = true;
+          // 单条失败保留记录，等待用户重试。
         }
       }
-      cards.value = cards.value.filter((item) => !ids.includes(item.id));
-      if (hasError) {
+      // 仅移除真正成功的记录，避免重启后失败记录重新出现。
+      cards.value = cards.value.filter((card) => !removed.includes(card.id));
+      if (removed.length < targets.length) {
         error.value = "部分记录移除失败，请重试";
       }
-    } catch {
-      error.value = "操作失败，请检查下载记录";
+    } finally {
+      removing.value = false;
     }
   };
 
@@ -141,11 +150,11 @@ export function createDownloads(api = downloadAPI) {
     }
   };
 
-  return { cards, error, isDownloading, handleProgress, doDownload, doCancel, loadHistory, act, removeMultiple };
+  return { cards, error, isDownloading, isRemoving: removing, handleProgress, doDownload, doCancel, loadHistory, act, removeMultiple };
 }
 
 export const progressPercent = (progress?: ProgressInfo) =>
-  progress && !["muxing","remuxing","transcoding"].includes(progress.stage) && progress.total > 0
+  progress && !isProcessingStage(progress.stage) && progress.total > 0
     ? Math.floor(Math.max(0, Math.min(1, progress.downloaded / progress.total)) * 100)
     : undefined;
 

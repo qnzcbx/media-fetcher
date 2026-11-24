@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { ref, watch, computed } from "vue";
 import { formatFileSize, formatDuration } from "../../utils/fileMetadata";
+import { progressText } from "../../utils/downloadStatus";
+import { isSelectableCard } from "../../composables/useGallerySelection";
 import { Image, Play, Music, Ellipsis, Check } from "@lucide/vue";
 import { downloadAPI } from "../../api/download";
 import type { GalleryCard } from "../../composables/useDownloads";
@@ -55,11 +57,14 @@ const pick = (action: string) => {
 
 const handleItemClick = () => {
   if (props.isSelectionMode) {
-    emit("toggleSelect");
+    // 活动任务不参与移除选择。
+    if (selectable.value) emit("toggleSelect");
   } else if (props.card.status === "done") {
     pick("source");
   }
 };
+
+const selectable = computed(() => isSelectableCard(props.card));
 
 const displayTitle = computed(() => {
   if (props.card.finalPath) {
@@ -104,7 +109,11 @@ const metadata = computed(() => {
     @contextmenu.prevent="!isSelectionMode && (menu = !menu)"
     @keydown.esc="menu = false"
   >
-    <div v-if="isSelectionMode" class="checkbox" :class="{ selected: isSelected }">
+    <div
+      v-if="isSelectionMode"
+      class="checkbox"
+      :class="{ selected: isSelected, disabled: !selectable }"
+    >
       <Check v-if="isSelected" :size="14" color="#fff" strokeWidth="3" />
     </div>
 
@@ -135,20 +144,12 @@ const metadata = computed(() => {
       <div class="title" :title="displayTitle">{{ displayTitle }}</div>
       <div class="meta">
         <span v-if="card.status === 'running' && card.progress">
-          {{
-            card.progress.stage === "muxing"
-              ? "合并中..."
-              : card.progress.total > 0
-                ? `${Math.floor((card.progress.downloaded / 1024 / 1024) * 10) / 10} MB / ${Math.floor((card.progress.total / 1024 / 1024) * 10) / 10} MB`
-                : "下载中..."
-          }}
+          {{ progressText(card.progress) }}
         </span>
         <span v-else-if="card.status === 'failed'">下载失败</span>
         <span v-else-if="card.status === 'cancelled'">已取消</span>
         <span v-else-if="card.status === 'queued' || card.status === 'cancelling'">
-          {{
-            card.status === "cancelling" ? "取消中..." : "排队中..."
-          }}
+          {{ card.status === "cancelling" ? "取消中..." : "排队中..." }}
         </span>
         <span v-else>{{ metadata }}</span>
       </div>
@@ -206,7 +207,7 @@ const metadata = computed(() => {
   cursor: pointer;
 }
 .list-item.selected {
-  background: rgba(142, 215, 235, 0.15); /* Light blue tint matching the primary color */
+  background: rgba(142, 215, 235, 0.15);
 }
 
 .checkbox {
@@ -222,6 +223,10 @@ const metadata = computed(() => {
 .checkbox.selected {
   background: var(--primary);
   border-color: var(--primary);
+}
+.checkbox.disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
 }
 
 .thumbnail-wrapper {

@@ -4,7 +4,11 @@ import { X, Check } from "@lucide/vue";
 import type { GalleryCard } from "../../composables/useDownloads";
 import DownloadCard from "./DownloadCard.vue";
 import GallerySelectionBar from "./GallerySelectionBar.vue";
-import { useGallerySelection } from "../../composables/useGallerySelection";
+import {
+  isSelectableCard,
+  selectableCount,
+  useGallerySelection,
+} from "../../composables/useGallerySelection";
 import BaseSheet from "../common/BaseSheet.vue";
 
 const props = defineProps<{ cards: GalleryCard[]; busy: boolean; error: string; open: boolean }>();
@@ -17,35 +21,51 @@ const emit = defineEmits<{
 
 const filter = ref("");
 const filters = computed(() => [
-  { id: "", name: "全部" }, { id: "video", name: "视频" }, { id: "image", name: "图片" },
+  { id: "", name: "全部" },
+  { id: "video", name: "视频" },
+  { id: "image", name: "图片" },
   ...(props.cards.some((item) => item.kind === "audio") ? [{ id: "audio", name: "音频" }] : []),
 ]);
-const filtered = computed(() => props.cards.filter((item) => !filter.value || item.kind === filter.value));
+const filtered = computed(() =>
+  props.cards.filter((item) => !filter.value || item.kind === filter.value),
+);
 
 const {
   selectedIds,
   exitSelectionMode,
   toggleSelection,
   selectAll,
-  selectedCount
+  collectSelectableIds,
+  selectedCount,
 } = useGallerySelection();
 
-watch(() => props.open, (val) => {
-  if (!val) exitSelectionMode();
-});
+watch(
+  () => props.open,
+  (val) => {
+    if (!val) exitSelectionMode();
+  },
+);
 
 watch(filter, () => {
   exitSelectionMode();
 });
 
-const totalSelectable = computed(() => filtered.value.filter(c => !['running','cancelling','queued'].includes(c.status)).length);
-const allSelected = computed(() => totalSelectable.value > 0 && selectedCount.value === totalSelectable.value);
+const totalSelectable = computed(() => selectableCount(filtered.value));
+const allSelected = computed(
+  () => totalSelectable.value > 0 && selectedCount.value === totalSelectable.value,
+);
 
 const handleRemove = () => {
-  const confirm = window.confirm(`移除选中的 ${selectedCount.value} 条下载记录？本地文件将保留。`);
+  // 执行前按最新状态复核，活动任务不会被移除。
+  const ids = collectSelectableIds(props.cards);
+  if (!ids.length) {
+    exitSelectionMode();
+    return;
+  }
+  const confirm = window.confirm(`移除选中的 ${ids.length} 条下载记录？本地文件将保留。`);
   if (!confirm) return;
 
-  emit('removeSelected', Array.from(selectedIds.value));
+  emit("removeSelected", ids);
   exitSelectionMode();
 };
 </script>
@@ -63,7 +83,9 @@ const handleRemove = () => {
         <h2>我的下载</h2>
       </div>
       <div class="right">
-        <button class="btn-text" @click="selectAll(filtered)">{{ allSelected ? '取消全选' : '全选' }}</button>
+        <button class="btn-text" @click="selectAll(filtered)">
+          {{ allSelected ? "取消全选" : "全选" }}
+        </button>
         <button class="icon-btn" aria-label="关闭" @click="emit('close')"><X :size="20" /></button>
       </div>
     </header>
@@ -72,11 +94,23 @@ const handleRemove = () => {
       <p v-if="error" role="alert" class="error-text">{{ error }}</p>
 
       <nav aria-label="资源类型">
-        <button v-for="item in filters" :key="item.id" :aria-pressed="filter === item.id" @click="filter = item.id">{{ item.name }}</button>
+        <button
+          v-for="item in filters"
+          :key="item.id"
+          :aria-pressed="filter === item.id"
+          @click="filter = item.id"
+        >
+          {{ item.name }}
+        </button>
       </nav>
 
       <div class="grid">
-        <div v-for="card in filtered" :key="card.id" class="card-wrapper" :class="{ selected: selectedIds.has(card.id) }">
+        <div
+          v-for="card in filtered"
+          :key="card.id"
+          class="card-wrapper"
+          :class="{ selected: selectedIds.has(card.id) }"
+        >
           <DownloadCard
             :card="card"
             :busy="busy"
@@ -87,13 +121,14 @@ const handleRemove = () => {
           <div
             class="selection-interaction-layer"
             :style="selectedCount > 0 ? 'pointer-events: auto;' : 'pointer-events: none;'"
-            @click="selectedCount > 0 && toggleSelection(card.id)"
+            @click="selectedCount > 0 && isSelectableCard(card) && toggleSelection(card)"
           >
             <div
+              v-if="isSelectableCard(card)"
               class="check-circle"
               :class="{ selected: selectedIds.has(card.id) }"
-              style="pointer-events: auto;"
-              @click.stop="toggleSelection(card.id)"
+              style="pointer-events: auto"
+              @click.stop="toggleSelection(card)"
             >
               <Check v-if="selectedIds.has(card.id)" :size="14" color="#fff" strokeWidth="3" />
             </div>
@@ -108,7 +143,7 @@ const handleRemove = () => {
       :totalSelectable="totalSelectable"
       hide-select-all
       @remove="handleRemove"
-      style="border-radius: 0; box-shadow: 0 -2px 10px rgba(0,0,0,0.05);"
+      style="border-radius: 0; box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.05)"
     />
   </BaseSheet>
 </template>
@@ -219,7 +254,7 @@ nav button[aria-pressed="true"] {
   height: 24px;
   border-radius: 50%;
   border: 2px solid rgba(255, 255, 255, 0.8);
-  background: rgba(0,0,0,0.3);
+  background: rgba(0, 0, 0, 0.3);
   display: flex;
   align-items: center;
   justify-content: center;
