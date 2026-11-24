@@ -3,15 +3,14 @@
 </script>
 
 <template>
-  <div class="media-grid">
+  <div class="media-grid grid gap-4">
     <slot></slot>
   </div>
 </template>
 
 <style scoped>
+/* 响应式列宽属于复杂布局规则，保留原生 CSS。 */
 .media-grid {
-  display: grid;
   grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
-  gap: 16px;
 }
 </style>

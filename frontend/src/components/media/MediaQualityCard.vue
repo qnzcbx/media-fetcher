@@ -61,12 +61,10 @@ watch(
 
 <style scoped>
 .media-card {
+  @apply relative overflow-hidden rounded-lg cursor-pointer;
   background: var(--card-bg);
-  border-radius: 8px;
   border: 2px solid transparent;
-  cursor: pointer;
   transition: all 0.2s;
-  overflow: hidden;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
 }
 
@@ -84,66 +82,47 @@ watch(
 }
 
 .media-cover {
-  width: 100%;
+  @apply relative w-full;
   aspect-ratio: 16/9;
   background: var(--input-bg);
-  position: relative;
 }
 
 .media-cover img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
+  @apply w-full h-full object-cover;
 }
 
 .cover-placeholder {
-  width: 100%;
-  height: 100%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  @apply flex items-center justify-center w-full h-full;
   color: var(--text-sub);
   font-size: 12px;
 }
 
 .kind-badge {
-  position: absolute;
-  top: 50%;
-  left: 50%;
+  @apply absolute top-1/2 left-1/2 rounded-full;
   transform: translate(-50%, -50%);
   width: 38px;
   height: 38px;
   padding: 8px;
-  border-radius: 50%;
   background: rgba(19, 21, 26, 0.45);
   color: #fff;
   box-sizing: content-box;
 }
 
 .lock-overlay {
-  position: absolute;
-  inset: 0;
+  @apply absolute inset-0 flex items-center justify-center;
   background: rgba(0, 0, 0, 0.5);
-  display: flex;
-  align-items: center;
-  justify-content: center;
 }
 
 .check {
-  position: absolute;
-  top: 8px;
-  right: 8px;
+  @apply absolute top-2 right-2 flex rounded-full;
   color: var(--primary);
   background: #fff;
-  border-radius: 50%;
-  display: flex;
 }
 
 .media-label {
+  @apply text-center font-medium;
   padding: 12px;
   min-height: 20px;
-  text-align: center;
-  font-weight: 500;
 }
 
 .media-card.accent-label .media-label {

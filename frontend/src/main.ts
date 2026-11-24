@@ -1,4 +1,5 @@
 import { createApp } from 'vue'
+import 'virtual:uno.css'
 import './styles/tokens.css'
 import './styles/fonts.css'
 import './styles/base.css'
