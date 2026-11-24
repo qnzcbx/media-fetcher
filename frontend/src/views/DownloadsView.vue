@@ -1,0 +1,225 @@
+<script setup lang="ts">
+import { computed, ref, watch } from "vue";
+import { ChevronLeft } from "@lucide/vue";
+import type { GalleryCard } from "../composables/useDownloads";
+import DownloadListItem from "../components/download/DownloadListItem.vue";
+import GallerySelectionBar from "../components/download/GallerySelectionBar.vue";
+import { useGallerySelection } from "../composables/useGallerySelection";
+
+const props = defineProps<{ cards: GalleryCard[]; busy: boolean; error: string }>();
+const emit = defineEmits<{
+  action: [card: GalleryCard, action: string];
+  cancel: [];
+  back: [];
+  removeSelected: [ids: string[]];
+}>();
+
+const filter = ref("");
+const filters = computed(() => [
+  { id: "", name: "全部" }, { id: "video", name: "视频" }, { id: "image", name: "图片" },
+  ...(props.cards.some((item) => item.kind === "audio") ? [{ id: "audio", name: "音频" }] : []),
+]);
+const filtered = computed(() => props.cards.filter((item) => !filter.value || item.kind === filter.value));
+
+const {
+  isSelectionMode,
+  selectedIds,
+  enterSelectionMode,
+  exitSelectionMode,
+  toggleSelection,
+  selectAll,
+  selectedCount
+} = useGallerySelection();
+
+watch(filter, () => {
+  exitSelectionMode();
+});
+
+const handleRemove = () => {
+  const confirm = window.confirm(`移除选中的 ${selectedCount.value} 条下载记录？本地文件将保留。`);
+  if (!confirm) return;
+
+  emit('removeSelected', Array.from(selectedIds.value));
+  exitSelectionMode();
+};
+</script>
+
+<template>
+  <div class="downloads-view">
+    <div class="content-wrapper">
+      <header class="header">
+        <div class="left">
+          <button class="icon-btn" @click="emit('back')"><ChevronLeft :size="24" /></button>
+          <h1>我的下载</h1>
+        </div>
+        <div class="right">
+          <button class="btn-text" @click="isSelectionMode ? exitSelectionMode() : enterSelectionMode()">
+            {{ isSelectionMode ? '取消选择' : '选择' }}
+          </button>
+        </div>
+      </header>
+
+      <div class="filters">
+        <nav>
+          <button
+            v-for="item in filters"
+            :key="item.id"
+            class="filter-tab"
+            :class="{ active: filter === item.id }"
+            @click="filter = item.id"
+          >
+            {{ item.name }}
+            <div class="indicator" v-if="filter === item.id"></div>
+          </button>
+        </nav>
+      </div>
+
+      <div class="list-container">
+        <p v-if="error" class="error-msg" role="alert">{{ error }}</p>
+
+        <div class="list">
+          <DownloadListItem
+            v-for="card in filtered"
+            :key="card.id"
+            :card="card"
+            :busy="busy"
+            :isSelectionMode="isSelectionMode"
+            :isSelected="selectedIds.has(card.id)"
+            @action="(item: GalleryCard, action: string) => emit('action', item, action)"
+            @cancel="emit('cancel')"
+            @toggleSelect="toggleSelection(card.id)"
+          />
+          <div v-if="filtered.length === 0" class="empty-state">没有记录</div>
+        </div>
+      </div>
+
+      <GallerySelectionBar
+        v-if="isSelectionMode"
+        class="selection-bar-fixed"
+        :count="selectedCount"
+        :totalSelectable="filtered.filter(c => !['running','cancelling','queued'].includes(c.status)).length"
+        @remove="handleRemove"
+        @selectAll="selectAll(filtered)"
+      />
+    </div>
+  </div>
+</template>
+
+<style scoped>
+.downloads-view {
+  width: 100%;
+  background: var(--bg);
+  min-height: 100%;
+}
+
+.content-wrapper {
+  max-width: 1160px;
+  margin: 0 auto;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  padding: 0 20px;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 24px 0 16px;
+}
+.header .left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.icon-btn {
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  color: var(--text-main);
+  padding: 4px;
+  display: flex;
+  align-items: center;
+  margin-left: -8px;
+}
+.header h1 {
+  font-size: 20px;
+  font-weight: 500;
+  margin: 0;
+}
+.btn-text {
+  background: transparent;
+  border: none;
+  color: var(--primary);
+  font-size: 15px;
+  cursor: pointer;
+}
+
+.filters {
+  margin-bottom: 24px;
+}
+.filters nav {
+  display: flex;
+  gap: 24px;
+}
+.filter-tab {
+  background: transparent;
+  border: none;
+  padding: 0 0 12px 0;
+  font-size: 15px;
+  color: var(--text-sub);
+  cursor: pointer;
+  position: relative;
+}
+.filter-tab.active {
+  color: var(--text-main);
+  font-weight: 500;
+}
+.indicator {
+  position: absolute;
+  bottom: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 20px;
+  height: 3px;
+  background: #a3d2e1;
+  border-radius: 3px 3px 0 0;
+}
+
+.list-container {
+  width: 100%;
+  padding-bottom: 40px;
+}
+.list {
+  background: var(--card-bg);
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.02);
+}
+.list > *:last-child {
+  border-bottom: none;
+}
+.empty-state {
+  padding: 40px;
+  text-align: center;
+  color: var(--text-sub);
+  font-size: 14px;
+}
+
+.error-msg {
+  color: #e53e3e;
+  text-align: center;
+  margin-bottom: 16px;
+  font-size: 14px;
+}
+
+.selection-bar-fixed {
+  position: sticky;
+  bottom: 0;
+  z-index: 10;
+  margin: 0 -20px;
+  padding: 12px 20px;
+  box-shadow: 0 -4px 20px rgba(0,0,0,0.08);
+  border-radius: 0;
+}
+</style>
