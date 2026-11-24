@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, watch } from "vue";
-import { Download, ClipboardPaste } from "@lucide/vue";
+import { Download, ClipboardPaste, X } from "@lucide/vue";
 
 const props = defineProps<{
   modelValue: string;
@@ -43,6 +43,17 @@ const onPaste = async () => {
     <input v-model="localUrl" type="text" placeholder="你的链接" required />
     <div class="icon-btn-box">
       <button
+        v-if="localUrl"
+        type="button"
+        @click="localUrl = ''"
+        class="icon-btn-small"
+        title="清空"
+        :disabled="isParsing"
+      >
+        <X class="icon" />
+      </button>
+      <button
+        v-else
         type="button"
         @click="onPaste"
         class="icon-btn-small"

@@ -8,6 +8,8 @@ import ResourcePicker from "./components/media/ResourcePicker.vue";
 import CredentialModal from "./components/credential/CredentialModal.vue";
 import BilibiliQRModal from "./components/credential/BilibiliQRModal.vue";
 import DownloadGallery from "./components/download/DownloadGallery.vue";
+import DownloadGalleryDrawer from "./components/download/DownloadGalleryDrawer.vue";
+import DownloadsView from "./views/DownloadsView.vue";
 
 import type { MediaInfoResponse } from "./mygo";
 import { canUnlock, resolveParseTarget, useCredentials } from "./composables/useCredentials";
@@ -44,9 +46,12 @@ const {
   toggleAllImages,
 } = useMediaSelection();
 
-const { isDownloading, cards, error: downloadError, doDownload, doCancel, act } = useDownloads();
+const { isDownloading, cards, error: downloadError, doDownload, doCancel, act, removeMultiple } = useDownloads();
 
 // State
+const currentView = ref<"home" | "downloads">("home");
+const drawerOpen = ref(false);
+
 const url = ref("");
 let snapshot: { url: string; media: MediaInfoResponse } | undefined;
 const isPreparing = ref(false);
@@ -133,24 +138,58 @@ const handleUnlock = () => {
 
 <template>
   <div class="app-container">
-    <AppHeader @openCredentials="openCredentials" />
+    <template v-if="currentView === 'home'">
+      <AppHeader @openCredentials="openCredentials" />
 
-    <main class="main-content">
-      <BrandWordmark />
+      <main class="main-content" :class="{ 'no-downloads': cards.length === 0 }">
+        <BrandWordmark />
 
-      <LinkInput
-        v-model="url"
-        :isParsing="isPreparing || isParsing"
-        @submit="handleParse"
-        @pasteError="(msg) => (parseError = msg)"
+        <LinkInput
+          v-model="url"
+          :isParsing="isPreparing || isParsing"
+          @submit="handleParse"
+          @pasteError="(msg) => (parseError = msg)"
+        />
+
+        <SupportedSites />
+
+        <div class="error-msg" v-if="!mediaInfo && (parseError || credentialError)" role="alert">{{ parseError || credentialError }}</div>
+
+        <DownloadGallery
+          :cards="cards"
+          :busy="isDownloading"
+          :error="downloadError"
+          @action="act"
+          @cancel="doCancel"
+          @openDrawer="drawerOpen = true"
+          @openView="currentView = 'downloads'"
+        />
+      </main>
+    </template>
+
+    <Transition name="fade-view">
+      <DownloadsView
+        v-if="currentView === 'downloads'"
+        :cards="cards"
+        :busy="isDownloading"
+        :error="downloadError"
+        @action="act"
+        @cancel="doCancel"
+        @back="currentView = 'home'"
+        @removeSelected="removeMultiple"
       />
+    </Transition>
 
-      <SupportedSites />
-
-      <div class="error-msg" v-if="!mediaInfo && (parseError || credentialError)" role="alert">{{ parseError || credentialError }}</div>
-
-      <DownloadGallery :cards="cards" :busy="isDownloading" :error="downloadError" @action="act" @cancel="doCancel" />
-    </main>
+    <DownloadGalleryDrawer
+      :open="drawerOpen"
+      :cards="cards"
+      :busy="isDownloading"
+      :error="downloadError"
+      @action="act"
+      @cancel="doCancel"
+      @close="drawerOpen = false"
+      @removeSelected="removeMultiple"
+    />
 
     <!-- Resource Selection Modal -->
     <ResourcePicker
@@ -195,7 +234,15 @@ const handleUnlock = () => {
 
 <style>
 /* Global styles are injected in main.ts */
-.app-container { overflow-y: auto; }
+.app-container {
+  overflow-y: auto;
+  height: 100vh;
+  position: relative;
+  scrollbar-gutter: stable;
+  background: var(--bg);
+  display: flex;
+  flex-direction: column;
+}
 .main-content {
   flex: 1;
   padding: 18px 20px 24px;
@@ -207,6 +254,10 @@ const handleUnlock = () => {
   transition: all 0.3s ease;
 }
 
+.main-content.no-downloads {
+  margin-top: 4vh;
+}
+
 .error-msg {
   color: #e53e3e;
   text-align: center;
@@ -214,5 +265,23 @@ const handleUnlock = () => {
   background: #fed7d7;
   padding: 10px;
   border-radius: 8px;
+}
+
+.fade-view-enter-active,
+.fade-view-leave-active {
+  transition: opacity 0.22s ease, transform 0.22s ease;
+}
+
+.fade-view-leave-active {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+}
+
+.fade-view-enter-from,
+.fade-view-leave-to {
+  opacity: 0;
+  transform: translateY(10px);
 }
 </style>

@@ -387,10 +387,15 @@ func (s *DesktopService) doDownload(ctx context.Context, params DownloadParams) 
 
 	createdAt := time.Now()
 	complete := func(itemID, kind, path string, resourceID int) {
+		var fileSize int64
+		if info, err := os.Stat(path); err == nil {
+			fileSize = info.Size()
+		}
 		record := DownloadRecord{
 			ID: params.TaskID + "-" + itemID, TaskID: params.TaskID, SiteID: media.SiteID, Kind: kind,
 			Title: media.Title, SourceURL: cleanSource(params.URL), FinalPath: path, CreatedAt: createdAt,
 			CompletedAt: time.Now(), Status: "done", ResourceID: resourceID, Codec: params.VideoCodec,
+			FileSize: fileSize,
 		}
 		cover := ""
 		if value, ok := s.previewCache.Load(media.CoverURL); ok {

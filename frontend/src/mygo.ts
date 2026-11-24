@@ -44,6 +44,7 @@ export interface DownloadRecord {
   status: string;
   resourceId: number;
   codec: string;
+  fileSize?: number;
 }
 
 export interface ImageItem {

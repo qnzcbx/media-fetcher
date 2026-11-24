@@ -103,6 +103,26 @@ export function createDownloads(api = downloadAPI) {
     }
   };
 
+  const removeMultiple = async (ids: string[]) => {
+    try {
+      error.value = "";
+      let hasError = false;
+      for (const id of ids) {
+        try {
+          await api.remove(id);
+        } catch {
+          hasError = true;
+        }
+      }
+      cards.value = cards.value.filter((item) => !ids.includes(item.id));
+      if (hasError) {
+        error.value = "部分记录移除失败，请重试";
+      }
+    } catch {
+      error.value = "操作失败，请检查下载记录";
+    }
+  };
+
   const act = async (card: GalleryCard, action: string) => {
     try {
       error.value = "";
@@ -121,7 +141,7 @@ export function createDownloads(api = downloadAPI) {
     }
   };
 
-  return { cards, error, isDownloading, handleProgress, doDownload, doCancel, loadHistory, act };
+  return { cards, error, isDownloading, handleProgress, doDownload, doCancel, loadHistory, act, removeMultiple };
 }
 
 export const progressPercent = (progress?: ProgressInfo) =>

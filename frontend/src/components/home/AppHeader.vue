@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Key } from "@lucide/vue";
+import { KeyRound } from "@lucide/vue";
 
 defineProps<{
   onOpenCredentials: () => void;
@@ -11,7 +11,7 @@ defineProps<{
     <div class="logo"></div>
     <div class="actions">
       <button @click="onOpenCredentials" class="icon-btn" title="凭证管理">
-        <Key class="icon" />
+        <KeyRound class="icon" />
       </button>
     </div>
   </header>

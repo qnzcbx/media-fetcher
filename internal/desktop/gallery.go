@@ -38,6 +38,7 @@ type DownloadRecord struct {
 	Status      string    `json:"status"`
 	ResourceID  int       `json:"resourceId"`
 	Codec       string    `json:"codec"`
+	FileSize    int64     `json:"fileSize,omitempty"`
 }
 
 var taskIDPattern = regexp.MustCompile("^[a-f0-9]{32}$")
