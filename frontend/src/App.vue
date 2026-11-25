@@ -48,8 +48,16 @@ const {
   toggleAllImages,
 } = useMediaSelection();
 
-const { isDownloading, cards, error: downloadError, doDownload, doCancel, act, removeMultiple } = useDownloads();
-const { preferences, setTheme, setDefaultAudioFormat } = usePreferences();
+const {
+  isDownloading,
+  cards,
+  error: downloadError,
+  doDownload,
+  doCancel,
+  act,
+  removeMultiple,
+} = useDownloads();
+const { preferences, setTheme, setDefaultAudioFormat, setDownloadDirectory } = usePreferences();
 
 // State
 const currentView = ref<"home" | "downloads">("home");
@@ -105,16 +113,22 @@ const handleStartDownload = async (mode: string, format: string) => {
     Mode: mode,
     AudioFormat: format,
     CoverPreview: previewMap.value[media.coverUrl] ?? "",
-    PreviewURLs: mode === "images" ? (media.images ?? []).filter(img => selectedImages.value.includes(img.index)).map(img => img.url) : [media.coverUrl],
+    PreviewURLs:
+      mode === "images"
+        ? (media.images ?? [])
+            .filter((img) => selectedImages.value.includes(img.index))
+            .map((img) => img.url)
+        : [media.coverUrl],
     AccountID: media.usedAccountId,
-    OutputDir: "", // 后端默认回退到系统 Downloads 目录
+    OutputDir: preferences.value.downloadDirectory,
     VideoID: mode === "images" || mode === "audio" ? -1 : selectedVideoID.value,
     VideoCodec: mode === "images" || mode === "audio" ? "" : selectedVideoCodec.value,
     AudioID: mode === "images" || mode === "video" ? -1 : selectedAudioID.value,
     SelectedImage: media.images?.length ? selectedImages.value : [],
   };
 
-  if (await doDownload(params, media, previewMap.value) && mediaInfo.value === media) clearMediaInfo();
+  if ((await doDownload(params, media, previewMap.value)) && mediaInfo.value === media)
+    clearMediaInfo();
 };
 
 const uniqueVideoStreams = computed(() => {
@@ -123,14 +137,15 @@ const uniqueVideoStreams = computed(() => {
 });
 
 const showUnlockCard = computed(() =>
-  canUnlock(mediaInfo.value, isInitialized.value, getActiveAccountId("bilibili"))
+  canUnlock(mediaInfo.value, isInitialized.value, getActiveAccountId("bilibili")),
 );
 
 const handleUnlock = () => {
   const original = snapshot;
   if (!original || !showUnlockCard.value || isParsing.value) return;
   void loginBilibili(async (accountId, isCurrent) => {
-    const canApply = () => isCurrent() && snapshot === original && mediaInfo.value === original.media;
+    const canApply = () =>
+      isCurrent() && snapshot === original && mediaInfo.value === original.media;
     if (!canApply() || isParsing.value) return;
     const oldAudioId = selectedAudioID.value;
     const res = await parse(original.url, accountId, canApply);
@@ -161,7 +176,9 @@ const handleUnlock = () => {
 
         <SupportedSites />
 
-        <div class="error-msg" v-if="!mediaInfo && (parseError || credentialError)" role="alert">{{ parseError || credentialError }}</div>
+        <div class="error-msg" v-if="!mediaInfo && (parseError || credentialError)" role="alert">
+          {{ parseError || credentialError }}
+        </div>
 
         <DownloadGallery
           :cards="cards"
@@ -202,6 +219,8 @@ const handleUnlock = () => {
     <SettingsDrawer
       :open="settingsOpen"
       :theme="preferences.theme"
+      :downloadDirectory="preferences.downloadDirectory"
+      @update:downloadDirectory="setDownloadDirectory"
       :defaultAudioFormat="preferences.defaultAudioFormat"
       @close="settingsOpen = false"
       @update:theme="setTheme"
@@ -224,7 +243,12 @@ const handleUnlock = () => {
       :defaultAudioFormat="preferences.defaultAudioFormat"
       @close="clearMediaInfo"
       @startDownload="handleStartDownload"
-      @update:selectedVideo="(id, codec) => { selectedVideoID = id; selectedVideoCodec = codec; }"
+      @update:selectedVideo="
+        (id, codec) => {
+          selectedVideoID = id;
+          selectedVideoCodec = codec;
+        }
+      "
       @update:selectedAudio="(id) => (selectedAudioID = id)"
       @toggleImage="toggleImage"
       @toggleAllImages="toggleAllImages"
@@ -251,7 +275,7 @@ const handleUnlock = () => {
 </template>
 
 <style>
-/* Global styles are injected in main.ts */
+/* Global styles 在 main.ts */
 .app-container {
   overflow-y: auto;
   height: 100vh;
@@ -292,7 +316,9 @@ const handleUnlock = () => {
 
 .fade-view-enter-active,
 .fade-view-leave-active {
-  transition: opacity 0.22s ease, transform 0.22s ease;
+  transition:
+    opacity 0.22s ease,
+    transform 0.22s ease;
 }
 
 .fade-view-leave-active {

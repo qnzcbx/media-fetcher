@@ -55,6 +55,8 @@ export function createDownloads(api = downloadAPI) {
     })) };
     const task = active.value;
     try {
+      params = { ...params, OutputDir: await api.validateDirectory(params.OutputDir) };
+      for (const card of task.cards) if (card.retry) card.retry.OutputDir = params.OutputDir;
       await api.start({ ...params, TaskID: id });
       task.accepted = true;
       cards.value = [...task.cards, ...cards.value];

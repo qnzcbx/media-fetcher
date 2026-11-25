@@ -80,5 +80,9 @@ export const usePreferences = () => {
     preferences.value = { ...preferences.value, defaultAudioFormat: format };
   };
 
-  return { preferences, resolvedTheme, setTheme, setDefaultAudioFormat };
+  const setDownloadDirectory = (downloadDirectory: string) => {
+    preferences.value = { ...preferences.value, downloadDirectory };
+  };
+
+  return { setDownloadDirectory, preferences, resolvedTheme, setTheme, setDefaultAudioFormat };
 };

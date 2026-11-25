@@ -4,6 +4,7 @@ export type ResolvedTheme = "light" | "dark";
 export type AudioFormat = "m4a" | "mp3";
 
 export type Preferences = {
+  downloadDirectory: string;
   theme: ThemePreference;
   defaultAudioFormat: AudioFormat;
 };
@@ -11,6 +12,7 @@ export type Preferences = {
 export const PREFERENCES_STORAGE_KEY = "media-fetcher.preferences.v1";
 
 export const DEFAULT_PREFERENCES: Preferences = {
+  downloadDirectory: "",
   theme: "system",
   defaultAudioFormat: "m4a",
 };
@@ -28,6 +30,7 @@ const isAudioFormat = (value: unknown): value is AudioFormat =>
 export const normalizePreferences = (value: unknown): Preferences => {
   const record = (value && typeof value === "object" ? value : {}) as Record<string, unknown>;
   return {
+    downloadDirectory: typeof record.downloadDirectory === "string" && !record.downloadDirectory.includes("\0") && (record.downloadDirectory === "" || /^(?:[a-z]:[\\/]|\\\\[^\\]+\\[^\\]+|\/)/i.test(record.downloadDirectory)) ? record.downloadDirectory : "",
     theme: isThemePreference(record.theme) ? record.theme : DEFAULT_PREFERENCES.theme,
     defaultAudioFormat: isAudioFormat(record.defaultAudioFormat)
       ? record.defaultAudioFormat

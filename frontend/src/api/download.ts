@@ -1,6 +1,7 @@
 import { DesktopService, events } from "../mygo";
 
 export const downloadAPI = {
+  validateDirectory: DesktopService.validateDownloadDirectory,
   start: DesktopService.startDownload,
   cancel: DesktopService.cancelDownload,
   history: DesktopService.downloadHistory,

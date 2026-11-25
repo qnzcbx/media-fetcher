@@ -300,6 +300,11 @@ type ProgressInfo struct {
 }
 
 func (s *DesktopService) StartDownload(params DownloadParams) error {
+	directory, err := s.ValidateDownloadDirectory(params.OutputDir)
+	if err != nil {
+		return err
+	}
+	params.OutputDir = directory
 	if err := validateDownload(params); err != nil {
 		return err
 	}
@@ -442,10 +447,9 @@ func (s *DesktopService) doDownload(ctx context.Context, params DownloadParams) 
 	}
 	d := downloader.New(client)
 
-	outputDir := params.OutputDir
-	if outputDir == "" {
-		home, _ := os.UserHomeDir()
-		outputDir = filepath.Join(home, "Downloads")
+	outputDir, err := s.ValidateDownloadDirectory(params.OutputDir)
+	if err != nil {
+		return err
 	}
 
 	// 创建独立临时工作目录
@@ -652,12 +656,6 @@ func (s *DesktopService) doDownload(ctx context.Context, params DownloadParams) 
 	complete("media", kind, finalOut, resourceID)
 
 	return nil
-}
-
-func (s *DesktopService) SelectDirectory() (string, error) {
-	// 目前 MyGo 暂未在文档中提供开箱即用的原生目录选择弹窗 API
-	// 作为安全和克制的选择，暂时回退默认而不引入未受官方支持的包。
-	return "", fmt.Errorf("not implemented")
 }
 
 type outputFailure struct{ error }

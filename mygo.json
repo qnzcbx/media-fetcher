@@ -8,8 +8,8 @@
   "buildCommand": "pnpm run build",
   "frontendDist": "frontend/dist",
   "bindings": "frontend/src/mygo.ts",
-  "icon": "assets/branding/icon-master.png",
-  "macos": { "icon": "assets/branding/icon-master.icns" },
+  "icon": "assets/branding/icon.png",
+  "macos": { "icon": "assets/branding/icon.icns" },
   "resources": ["THIRD_PARTY_NOTICES.md"],
   "out": "build"
 }

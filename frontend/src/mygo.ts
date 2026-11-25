@@ -131,12 +131,15 @@ export const DesktopService = {
   galleryThumbnail: bind<[string], string>("DesktopService.GalleryThumbnail", (id: string) => [id]),
   generateBiliQRCode: bind<[], BiliQRSession>("DesktopService.GenerateBiliQRCode", () => []),
   getAccounts: bind<[], SafeAccount[]>("DesktopService.GetAccounts", () => []),
+  getDefaultDownloadDirectory: bind<[], string>("DesktopService.GetDefaultDownloadDirectory", () => []),
+  openDownloadDirectory: bind<[string], void>("DesktopService.OpenDownloadDirectory", (path: string) => [path]),
   openDownloadRecord: bind<[string, string], void>("DesktopService.OpenDownloadRecord", (id: string, action: string) => [id, action]),
   pollBiliQRCode: bind<[string], PollResult>("DesktopService.PollBiliQRCode", (qrcodeKey: string) => [qrcodeKey]),
   removeDownloadRecord: bind<[string], void>("DesktopService.RemoveDownloadRecord", (id: string) => [id]),
-  selectDirectory: bind<[], string>("DesktopService.SelectDirectory", () => []),
+  selectDownloadDirectory: bind<[string], string>("DesktopService.SelectDownloadDirectory", (current: string) => [current]),
   setWindow: bind<[Window | null], void>("DesktopService.SetWindow", (w: Window | null) => [w]),
   startDownload: bind<[DownloadParams], void>("DesktopService.StartDownload", (params: DownloadParams) => [params]),
+  validateDownloadDirectory: bind<[string], string>("DesktopService.ValidateDownloadDirectory", (path: string) => [path]),
 } as const;
 
 // ---- Events ----

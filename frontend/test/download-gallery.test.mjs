@@ -7,7 +7,9 @@ try {
   let latest;
   let refuse = true;
   const api = {
+    validateDirectory: async (path) => path || "C:\\Downloads",
     start: async (params) => {
+      assert.equal(params.OutputDir, "C:\\Downloads");
       latest = params.TaskID;
       if (refuse) throw new Error("拒绝启动");
     },
@@ -26,6 +28,10 @@ try {
   refuse = false;
 
   assert.equal(await state.doDownload(params, media, {}), true);
+  assert.equal(state.cards.value[0].retry.OutputDir, "C:\\Downloads");
+  params.OutputDir = "C:\\Changed";
+  assert.equal(state.cards.value[0].retry.OutputDir, "C:\\Downloads");
+  params.OutputDir = "";
   const first = latest;
   assert.deepEqual(state.cards.value.map((card) => card.resourceId), [1, 2]);
   state.handleProgress(event("images", "1"));
@@ -57,6 +63,7 @@ try {
 
   // 批量移除：部分失败时保留失败记录，并跳过活动任务。
   const removeState = createDownloads({
+    validateDirectory: async (path) => path || "C:\\Downloads",
     start: async () => {},
     cancel: async () => {},
     history: async () => [],
@@ -76,6 +83,7 @@ try {
   // 批量移除期间重复提交只执行一次。
   let calls = 0;
   const guardState = createDownloads({
+    validateDirectory: async (path) => path || "C:\\Downloads",
     start: async () => {},
     cancel: async () => {},
     history: async () => [],

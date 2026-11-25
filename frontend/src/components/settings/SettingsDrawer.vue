@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { X } from "@lucide/vue";
 import BaseSheet from "../common/BaseSheet.vue";
+import DownloadDirectorySetting from "./DownloadDirectorySetting.vue";
 import ThemeSelector from "./ThemeSelector.vue";
 import type { AudioFormat, ThemePreference } from "../../utils/preferences";
 
@@ -8,12 +9,14 @@ const AUDIO_FORMATS: AudioFormat[] = ["m4a", "mp3"];
 
 defineProps<{
   open: boolean;
+  downloadDirectory: string;
   theme: ThemePreference;
   defaultAudioFormat: AudioFormat;
 }>();
 
 const emit = defineEmits<{
   (e: "close"): void;
+  (e: "update:downloadDirectory", value: string): void;
   (e: "update:theme", value: ThemePreference): void;
   (e: "update:defaultAudioFormat", value: AudioFormat): void;
 }>();
@@ -62,7 +65,10 @@ const emit = defineEmits<{
             </button>
           </div>
         </div>
-        <p class="settings-hint">仅影响之后打开的资源选择器。</p>
+        <DownloadDirectorySetting
+          :modelValue="downloadDirectory"
+          @update:modelValue="(value) => emit('update:downloadDirectory', value)"
+        />
       </section>
     </div>
   </BaseSheet>
@@ -142,15 +148,5 @@ const emit = defineEmits<{
   padding: 2px;
   border-radius: 8px;
   background: var(--input-bg);
-}
-
-
-
-
-
-.settings-hint {
-  margin: 10px 0 0;
-  font-size: 12px;
-  color: var(--text-sub);
 }
 </style>

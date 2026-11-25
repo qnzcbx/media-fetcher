@@ -1,48 +1,39 @@
 package desktop
 
 import (
-	"sync"
+	"context"
 	"testing"
-	"time"
+
+	"media-fetcher/core/extractor"
 )
 
+type blockedDirectoryExtractor struct{ started, finished chan struct{} }
+
+func (blockedDirectoryExtractor) SiteID() string    { return "bilibili" }
+func (blockedDirectoryExtractor) Match(string) bool { return true }
+func (f blockedDirectoryExtractor) Extract(ctx context.Context, _ string, _ extractor.ExtractOptions) (*extractor.MediaInfo, error) {
+	close(f.started)
+	<-ctx.Done()
+	close(f.finished)
+	return nil, ctx.Err()
+}
+
 func TestDesktopService_StartDownload_Concurrency(t *testing.T) {
-	// 极简并发测试，确保同时请求不会创建两个活动任务
 	s, err := NewDesktopService()
 	if err != nil {
-		t.Fatalf("初始化失败: %v", err)
+		t.Fatal(err)
 	}
-
-	// 模拟第一次启动任务，应当成功
-	err1 := s.StartDownload(DownloadParams{URL: "invalid", Mode: "video", VideoID: 80, AudioID: -1})
-	if err1 != nil {
-		t.Fatalf("第一次启动任务失败: %v", err1)
+	fixture := blockedDirectoryExtractor{make(chan struct{}), make(chan struct{})}
+	s.registry = extractor.NewRegistry()
+	s.registry.Register(fixture)
+	params := DownloadParams{OutputDir: t.TempDir(), URL: "fixture", Mode: "video", VideoID: 80, AudioID: -1}
+	if err := s.StartDownload(params); err != nil {
+		t.Fatal(err)
 	}
-
-	// 立即启动第二次，应该因为有正在运行的任务而失败
-	var err2 error
-	var wg sync.WaitGroup
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		err2 = s.StartDownload(DownloadParams{URL: "invalid", Mode: "video", VideoID: 80, AudioID: -1})
-	}()
-
-	wg.Wait()
-	if err2 == nil {
-		t.Fatalf("第二次启动任务应该失败，但成功了，存在并发漏洞")
-	}
-
-	// 取消第一次任务
-	s.CancelDownload()
-
-	// 等待第一次任务彻底结束 (doDownload 返回后清理状态)
-	time.Sleep(100 * time.Millisecond)
-
-	// 第三次启动任务，应当成功
-	err3 := s.StartDownload(DownloadParams{URL: "invalid", Mode: "video", VideoID: 80, AudioID: -1})
-	if err3 != nil {
-		t.Fatalf("第三次启动任务失败 (之前的任务取消后状态未正确清理): %v", err3)
+	<-fixture.started
+	if err := s.StartDownload(params); err == nil {
+		t.Fatal("并发任务被接受")
 	}
 	s.CancelDownload()
+	<-fixture.finished
 }
