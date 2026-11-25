@@ -86,3 +86,7 @@ Windows 凭证通过当前用户作用域的 DPAPI 加密后保存在本机。�
 当前处于 Windows 桌面预览阶段。可用媒体受站点接口和账号权限影响。下载历史和应用缩略图保存在 Windows 用户数据目录的 `media-fetcher/downloads` 下。当前每次运行一个下载任务。
 
 运行 `pnpm run test:credentials` 检查前端凭证契约，运行 `go test -count=1 ./...` 检查 Go 核心与桌面服务。
+
+## 第三方素材
+
+Bilibili 与 LOFTER 线性图标来自 Arcticons，按 CC BY-SA 4.0 授权。详见 [第三方素材声明](THIRD_PARTY_NOTICES.md)。

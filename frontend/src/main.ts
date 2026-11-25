@@ -3,6 +3,7 @@ import 'virtual:uno.css'
 import './styles/tokens.css'
 import './styles/fonts.css'
 import './styles/base.css'
+import './styles/segmented-control.css'
 import App from './App.vue'
 import { initTheme } from './composables/usePreferences'
 

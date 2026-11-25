@@ -54,7 +54,7 @@ const emit = defineEmits<{
               v-for="format in AUDIO_FORMATS"
               :key="format"
               type="button"
-              class="format-button"
+              class="segmented-option"
               :aria-pressed="defaultAudioFormat === format"
               @click="emit('update:defaultAudioFormat', format)"
             >
@@ -144,32 +144,9 @@ const emit = defineEmits<{
   background: var(--input-bg);
 }
 
-.format-button {
-  border: 0;
-  background: transparent;
-  border-radius: 6px;
-  padding: 4px 14px;
-  font: inherit;
-  font-size: 13px;
-  color: var(--text-sub);
-  cursor: pointer;
-  transition: background-color 0.18s ease, color 0.18s ease;
-}
 
-.format-button:hover {
-  color: var(--text-main);
-}
 
-.format-button:focus-visible {
-  outline: 2px solid var(--focus-ring);
-  outline-offset: 1px;
-}
 
-.format-button[aria-pressed="true"] {
-  background: var(--selection-bg);
-  color: var(--selection-text);
-  font-weight: 500;
-}
 
 .settings-hint {
   margin: 10px 0 0;

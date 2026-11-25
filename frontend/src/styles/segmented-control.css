@@ -1,0 +1,26 @@
+.segmented-option {
+  border: 0;
+  background: transparent;
+  border-radius: 6px;
+  padding: 4px 14px;
+  font: inherit;
+  font-size: 13px;
+  color: var(--text-assist);
+  cursor: pointer;
+  transition: background-color 0.18s ease, color 0.18s ease;
+}
+
+.segmented-option:hover {
+  color: var(--text-main);
+}
+
+.segmented-option:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 1px;
+}
+
+.segmented-option[aria-pressed="true"] {
+  background: var(--selection-bg);
+  color: var(--selection-text);
+  font-weight: 500;
+}

@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <defs>
+    <linearGradient id="cardBg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FFFFFF" />
+      <stop offset="100%" stop-color="#F2F4F7" />
+    </linearGradient>
+    <linearGradient id="dotGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#69E8A4" />
+      <stop offset="100%" stop-color="#2BB673" />
+    </linearGradient>
+  </defs>
+
+  
+  <rect x="32" y="32" width="960" height="960" rx="224" fill="url(#cardBg)" />
+  <rect x="38" y="38" width="948" height="948" rx="218" fill="none" stroke="#E2E6EC" stroke-width="12" />
+
+  
+  <path d="M 232 676
+           C 256 540, 296 364, 348 340
+           C 382 324, 396 376, 404 456
+           L 418 592
+           C 468 486, 544 352, 604 340
+           C 644 332, 656 384, 646 472
+           L 626 632
+           C 620 680, 646 704, 688 692
+           C 726 680, 760 644, 788 604" fill="none" stroke="#1E2521" stroke-width="76" stroke-linecap="round" stroke-linejoin="round" />
+
+  
+  <circle cx="764" cy="348" r="54" fill="url(#dotGrad)" />
+</svg>

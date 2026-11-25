@@ -89,6 +89,17 @@ try {
   assert.equal(calls, 1);
   assert.equal(guardState.cards.value.length, 0);
 
+  for (const status of ["queued", "running", "cancelling"]) {
+    guardState.cards.value = [{ id: "active", status }];
+    await guardState.act({ id: "active", status: "done" }, "remove");
+    assert.equal(guardState.cards.value.length, 1);
+  }
+  assert.equal(calls, 1);
+  guardState.cards.value = [{ id: "active", status: "done" }];
+  await guardState.act(guardState.cards.value[0], "remove");
+  assert.equal(calls, 2);
+  assert.equal(guardState.cards.value.length, 0);
+
   // 选择资格：活动任务不能单选，全选也只覆盖可移除记录。
   const { useGallerySelection } = await vite.ssrLoadModule("/src/composables/useGallerySelection.ts");
   const selection = useGallerySelection();

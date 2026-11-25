@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { RadioGroupRoot, RadioGroupItem } from "reka-ui";
 import { Check, Monitor, Moon, Sun } from "@lucide/vue";
 import type { ThemePreference } from "../../utils/preferences";
 
@@ -18,22 +19,21 @@ const options = [
 </script>
 
 <template>
-  <div class="theme-options" role="radiogroup" aria-label="外观">
-    <button
+  <RadioGroupRoot class="theme-options" aria-label="外观" orientation="vertical" loop :model-value="modelValue" @update:model-value="(value) => { if (value === 'light' || value === 'dark' || value === 'system') emit('update:modelValue', value); }">
+    <RadioGroupItem
       v-for="option in options"
       :key="option.id"
       type="button"
-      role="radio"
+      :value="option.id"
       class="theme-option"
       :class="{ active: modelValue === option.id }"
-      :aria-checked="modelValue === option.id"
-      @click="emit('update:modelValue', option.id)"
+      @focus="emit('update:modelValue', option.id)"
     >
       <component :is="option.icon" :size="18" class="theme-icon" aria-hidden="true" />
       <span>{{ option.label }}</span>
       <Check v-if="modelValue === option.id" :size="16" class="theme-check" aria-hidden="true" />
-    </button>
-  </div>
+    </RadioGroupItem>
+  </RadioGroupRoot>
 </template>
 
 <style scoped>

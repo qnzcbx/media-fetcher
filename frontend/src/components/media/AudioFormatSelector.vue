@@ -14,7 +14,7 @@ const emit = defineEmits<{
     <div class="format-switch" role="group" aria-label="输出格式">
       <button
         type="button"
-        class="format-button"
+        class="segmented-option"
         title="优先保留兼容的原始 AAC 音轨"
         :aria-pressed="modelValue === 'm4a'"
         @click="emit('update:modelValue', 'm4a')"
@@ -23,7 +23,7 @@ const emit = defineEmits<{
       </button>
       <button
         type="button"
-        class="format-button"
+        class="segmented-option"
         title="通过 FFmpeg 转码为 MP3"
         :aria-pressed="modelValue === 'mp3'"
         @click="emit('update:modelValue', 'mp3')"
@@ -52,25 +52,7 @@ const emit = defineEmits<{
   background: var(--card-bg);
 }
 
-.format-button {
-  @apply border-0 bg-transparent text-muted cursor-pointer transition-colors rounded-md;
-  padding: 4px 14px;
-  font-size: 13px;
-  transition-duration: 180ms;
-}
 
-.format-button:hover {
-  @apply text-main;
-}
 
-.format-button:focus-visible {
-  outline: 2px solid var(--focus-ring);
-  outline-offset: 1px;
-}
 
-.format-button[aria-pressed="true"] {
-  background: var(--selection-bg);
-  color: var(--selection-text);
-  font-weight: 500;
-}
 </style>

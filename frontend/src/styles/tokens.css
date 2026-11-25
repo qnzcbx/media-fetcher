@@ -13,6 +13,7 @@
   --primary-text: #17323c;
   --text-main: #202427;
   --text-sub: #858b90;
+  --text-assist: #626b72;
   --border: #e0e4e8;
 
   --selection-bg: #caedf6;
@@ -44,6 +45,7 @@
   --primary-text: #10262d;
   --text-main: #e8ecef;
   --text-sub: #9ba4ab;
+  --text-assist: var(--text-sub);
   --border: #363c41;
 
   --selection-bg: #294650;

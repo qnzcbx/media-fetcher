@@ -138,8 +138,7 @@ export function createDownloads(api = downloadAPI) {
       if (action === "retry" && card.retry) {
         if (await start(card.retry, [card])) cards.value = cards.value.filter((item) => item.id !== card.id);
       } else if (action === "remove") {
-        await api.remove(card.id);
-        cards.value = cards.value.filter((item) => item.id !== card.id);
+        await removeMultiple([card.id]);
       } else if (action === "copy") {
         await navigator.clipboard.writeText(card.sourceUrl);
       } else {
