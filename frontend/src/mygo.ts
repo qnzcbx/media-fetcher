@@ -139,6 +139,7 @@ export const DesktopService = {
   selectDownloadDirectory: bind<[string], string>("DesktopService.SelectDownloadDirectory", (current: string) => [current]),
   setWindow: bind<[Window | null], void>("DesktopService.SetWindow", (w: Window | null) => [w]),
   startDownload: bind<[DownloadParams], void>("DesktopService.StartDownload", (params: DownloadParams) => [params]),
+  /** ValidateDownloadDirectory 在目录解析之外检查实际写入能力。 */
   validateDownloadDirectory: bind<[string], string>("DesktopService.ValidateDownloadDirectory", (path: string) => [path]),
 } as const;
 

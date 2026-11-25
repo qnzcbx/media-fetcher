@@ -53,3 +53,41 @@ func TestDownloadDirectoryFallback(t *testing.T) {
 		t.Fatalf("%s %v", path, err)
 	}
 }
+
+func TestPublishRejectsDirectoryRemovedAfterValidation(t *testing.T) {
+	s := &DesktopService{}
+	dir := t.TempDir()
+	src := filepath.Join(t.TempDir(), "media.mp4")
+	if err := os.WriteFile(src, []byte("media"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.ValidateDownloadDirectory(dir); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(dir); err != nil {
+		t.Fatal(err)
+	}
+	_, err := publishUnique(t.Context(), src, filepath.Join(dir, "result.mp4"))
+	var userError *outputFailure
+	if !errors.As(err, &userError) {
+		t.Fatalf("目录错误缺少用户提示: %v", err)
+	}
+	if _, err := os.Stat(dir); !os.IsNotExist(err) {
+		t.Fatalf("失效目录被重建: %v", err)
+	}
+	if data, err := os.ReadFile(src); err != nil || string(data) != "media" {
+		t.Fatalf("源文件被改动: %q %v", data, err)
+	}
+}
+
+func TestResolveDirectoryDoesNotProbeWriteAccess(t *testing.T) {
+	s := &DesktopService{}
+	dir := t.TempDir()
+	if path, err := s.resolveDownloadDirectory(dir); err != nil || path != dir {
+		t.Fatalf("%s %v", path, err)
+	}
+	files, err := os.ReadDir(dir)
+	if err != nil || len(files) != 0 {
+		t.Fatalf("解析目录产生临时文件: %v %v", files, err)
+	}
+}

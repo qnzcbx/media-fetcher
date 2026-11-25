@@ -518,7 +518,12 @@ func (s *DesktopService) doDownload(ctx context.Context, params DownloadParams) 
 				if ctx.Err() != nil {
 					return ctx.Err()
 				}
-				s.emitDownload(params.TaskID, itemID, ProgressInfo{Stage: "item-error", Message: "图片下载失败"})
+				message := "图片下载失败"
+				var outputErr *outputFailure
+				if errors.As(dlErr, &outputErr) {
+					message = outputErr.Error()
+				}
+				s.emitDownload(params.TaskID, itemID, ProgressInfo{Stage: "item-error", Message: message})
 				continue
 			}
 			complete(itemID, "image", path, img.Index)

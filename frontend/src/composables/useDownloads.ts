@@ -35,6 +35,7 @@ export function createDownloads(api = downloadAPI) {
         preview: event.record.thumbnail ? undefined : card.preview });
       if (event.message) error.value = event.message;
     } else if (event.stage === "item-error") {
+      if (event.message) error.value = event.message;
       card.status = "failed";
     } else {
       card.progress = event;

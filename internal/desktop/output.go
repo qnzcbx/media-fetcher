@@ -49,12 +49,12 @@ func (r publishReader) Read(p []byte) (int, error) {
 // publishUnique 在目标卷准备文件，再以不覆盖的方式发布。
 func publishUnique(ctx context.Context, src, dst string) (string, error) {
 	dir := filepath.Dir(dst)
-	if err := os.MkdirAll(dir, 0755); err != nil {
-		return "", err
+	if _, err := (&DesktopService{}).resolveDownloadDirectory(dir); err != nil {
+		return "", &outputFailure{err}
 	}
 	staged, err := os.CreateTemp(dir, ".publish-*")
 	if err != nil {
-		return "", err
+		return "", publishDirectoryError(dir, err)
 	}
 	defer os.Remove(staged.Name())
 	input, err := os.Open(src)
@@ -86,9 +86,17 @@ func publishUnique(ctx context.Context, src, dst string) (string, error) {
 		}
 		if !errors.Is(err, fsutil.ErrFileExists) && !os.IsExist(err) {
 			if _, statErr := os.Lstat(candidate); statErr != nil {
-				return "", err
+				return "", publishDirectoryError(dir, err)
 			}
 		}
 	}
 	return "", errors.New("同名文件数量超出限制")
+}
+
+// publishDirectoryError 为发布期间失效的目标目录保留可读提示。
+func publishDirectoryError(dir string, cause error) error {
+	if _, err := (&DesktopService{}).resolveDownloadDirectory(dir); err != nil {
+		return &outputFailure{err}
+	}
+	return cause
 }

@@ -4,6 +4,6 @@ package desktop
 
 import "os"
 
-func systemDownloadDirectory()(string,error) {
- return fallbackDownloadDirectory(os.UserHomeDir)
+func systemDownloadDirectory() (string, error) {
+	return fallbackDownloadDirectory(os.UserHomeDir)
 }
