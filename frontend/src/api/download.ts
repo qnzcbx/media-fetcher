@@ -4,6 +4,8 @@ export const downloadAPI = {
   validateDirectory: DesktopService.validateDownloadDirectory,
   fileStates: DesktopService.getDownloadFileStates,
   recycle: DesktopService.recycleDownloadFiles,
+  prepareDeletion: DesktopService.prepareDownloadDeletion,
+  executeDeletion: DesktopService.executeDownloadDeletion,
   start: DesktopService.startDownload,
   cancel: DesktopService.cancelDownload,
   history: DesktopService.downloadHistory,

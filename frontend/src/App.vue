@@ -58,6 +58,8 @@ const {
   act,
   removeMultiple,
   recycleMultiple,
+  managementError,
+  isRemoving,
   recycleConfirmation,
   confirmRecycle,
   refreshFileStates,
@@ -165,7 +167,7 @@ const handleUnlock = () => {
 </script>
 
 <template>
-  <RecycleConfirmation :confirmation="recycleConfirmation" @cancel="recycleConfirmation = undefined" @confirm="confirmRecycle" />
+  <RecycleConfirmation :confirmation="recycleConfirmation" :busy="isRemoving" :error="managementError" @cancel="recycleConfirmation = undefined" @confirm="confirmRecycle" />
 
   <div class="app-container" :class="{ 'app-container--downloads': currentView === 'downloads' }">
     <template v-if="currentView === 'home'">
@@ -189,8 +191,8 @@ const handleUnlock = () => {
 
         <DownloadGallery
           :cards="cards"
-          :busy="isDownloading"
-          :error="downloadError"
+          :busy="isDownloading || isRemoving"
+          :error="downloadError || (drawerOpen ? '' : managementError)"
           @action="act"
           @cancel="doCancel"
           @openDrawer="drawerOpen = true; refreshFileStates()"
@@ -203,8 +205,8 @@ const handleUnlock = () => {
       <DownloadsView
         v-if="currentView === 'downloads'"
         :cards="cards"
-        :busy="isDownloading"
-        :error="downloadError"
+        :busy="isDownloading || isRemoving"
+        :error="recycleConfirmation ? '' : managementError"
         @action="act"
         @cancel="doCancel"
         @back="currentView = 'home'"
@@ -216,8 +218,8 @@ const handleUnlock = () => {
     <DownloadGalleryDrawer
       :open="drawerOpen"
       :cards="cards"
-      :busy="isDownloading"
-      :error="downloadError"
+      :busy="isDownloading || isRemoving"
+      :error="recycleConfirmation ? '' : managementError"
       @action="act"
       @cancel="doCancel"
       @close="drawerOpen = false"

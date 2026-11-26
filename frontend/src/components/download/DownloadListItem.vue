@@ -144,7 +144,7 @@ const metadata = computed(() => {
       <div class="title" :title="displayTitle">{{ displayTitle }}</div>
       <div class="meta">
         <span v-if="card.status === 'running' && card.progress">
-          {{ progressText(card.progress) }}
+          <span v-if="progressText(card.progress)">{{ progressText(card.progress) }}</span><span v-else class="loading-feedback" role="status" aria-label="处理中">◌</span>
         </span>
         <span v-else-if="card.status === 'failed'">下载失败</span>
         <span v-else-if="card.status === 'cancelled'">已取消</span>
@@ -161,7 +161,6 @@ const metadata = computed(() => {
       </button>
       <div v-if="menu" class="dropdown-menu">
         <template v-if="card.status === 'done'">
-        <button v-if="card.canRecycle" class="recycle" @click.stop="pick('recycle')">删除文件</button>
           <button :disabled="card.fileState === 'missing' || card.fileState === 'unavailable'" @click.stop="pick('file')">打开文件</button>
           <button @click.stop="pick('folder')">打开目录</button>
           <button @click.stop="pick('copy')">复制原链接</button>
@@ -171,9 +170,9 @@ const metadata = computed(() => {
         </template>
         <button
           v-if="['done', 'failed', 'cancelled'].includes(card.status)"
-          @click.stop="pick('remove')"
+          @click.stop="pick('recycle')"
         >
-          移除记录
+          删除
         </button>
         <button
           v-else
@@ -191,6 +190,9 @@ const metadata = computed(() => {
 </template>
 
 <style scoped>
+.loading-feedback {display:inline-block; animation:rotate-feedback 1s linear infinite;}
+@keyframes rotate-feedback {to {transform:rotate(360deg)}}
+@media(prefers-reduced-motion:reduce){.loading-feedback{animation:none}}
 .recycle { color:var(--danger) !important; }
 .file-warning { position:absolute; bottom:5px; z-index:3; color:white; background:#202427bb; padding:3px 6px; border-radius:5px; font-size:12px; }
 .list-item {

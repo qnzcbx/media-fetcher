@@ -12,6 +12,7 @@ import (
 	"unsafe"
 
 	"golang.org/x/sys/windows"
+	"golang.org/x/sys/windows/registry"
 )
 
 func fileIdentity(info os.FileInfo) string {
@@ -60,6 +61,31 @@ func recycleFile(path string) error {
 	if err := safeLocalPath(path); err != nil {
 		return err
 	}
+	// 明确禁用回收站的策略直接拒绝，未知设备仍由 Shell 单项回调决定。
+	for _, root := range []registry.Key{registry.CURRENT_USER, registry.LOCAL_MACHINE} {
+		key, err := registry.OpenKey(root, `Software\Microsoft\Windows\CurrentVersion\Policies\Explorer`, registry.QUERY_VALUE)
+		if err == nil {
+			disabled, _, _ := key.GetIntegerValue("NoRecycleFiles")
+			key.Close()
+			if disabled != 0 {
+				return errors.New("系统策略已禁用回收站")
+			}
+		} else if err != registry.ErrNotExist {
+			return errors.New("无法核验系统回收站策略")
+		}
+	}
+	var query struct {
+		Size    uint32
+		Padding uint32
+		Bytes   int64
+		Items   int64
+	}
+	query.Size = uint32(unsafe.Sizeof(query))
+	volume, _ := windows.UTF16PtrFromString(filepath.VolumeName(path) + "\\")
+	result, _, _ := windows.NewLazySystemDLL("shell32.dll").NewProc("SHQueryRecycleBinW").Call(uintptr(unsafe.Pointer(volume)), uintptr(unsafe.Pointer(&query)))
+	if int32(result) < 0 {
+		return errors.New("此磁盘的回收站不可用")
+	}
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
 	ole := windows.NewLazySystemDLL("ole32.dll")
@@ -77,7 +103,7 @@ func recycleFile(path string) error {
 	}
 	defer operation.call(2)
 	// RECYCLEONDELETE + EARLYFAILURE，禁止自动永久删除的后备路径。
-	if err := operation.call(5, 0x80000|0x100000|0x400|0x2000|0x4000); err != nil {
+	if err := operation.call(5, 0x80000|0x100000|0x400|0x2000|0x4|0x10); err != nil {
 		return err
 	}
 	itemIID := windows.GUID{Data1: 0x43826d1e, Data2: 0xe718, Data3: 0x42ee, Data4: [8]byte{0xbc, 0x55, 0xa1, 0xe2, 0x61, 0xc3, 0x7b, 0xfe}}
@@ -91,10 +117,15 @@ func recycleFile(path string) error {
 		return errors.New("文件不可用")
 	}
 	defer item.call(2)
-	if err = operation.call(18, uintptr(unsafe.Pointer(item)), 0); err != nil {
+	sink := newRecycleSink()
+	defer keepSink(sink)
+	if err = operation.call(18, uintptr(unsafe.Pointer(item)), uintptr(unsafe.Pointer(sink))); err != nil {
 		return err
 	}
 	if err = operation.call(21); err != nil {
+		if _, statErr := os.Lstat(path); os.IsNotExist(statErr) {
+			return errRecycleUncertain
+		}
 		return err
 	}
 	var aborted int32
@@ -103,6 +134,9 @@ func recycleFile(path string) error {
 	}
 	if aborted != 0 {
 		return errRecycleCancelled
+	}
+	if !sink.pre || !sink.post || !sink.recycled {
+		return errRecycleUncertain
 	}
 	if _, err = os.Lstat(path); !os.IsNotExist(err) {
 		return errors.New("系统未确认文件已回收")

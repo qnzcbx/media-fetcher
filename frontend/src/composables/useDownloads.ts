@@ -1,6 +1,6 @@
 import { computed, onMounted, onUnmounted, ref } from "vue";
 import { downloadAPI } from "../api/download";
-import type { DownloadParams, DownloadRecord, MediaInfoResponse, ProgressInfo } from "../mygo";
+import type { DownloadParams, DownloadRecord, MediaInfoResponse, ProgressInfo, DeletePlan } from "../mygo";
 import { isActiveStatus, isProcessingStage } from "../utils/downloadStatus";
 
 type Request = Omit<DownloadParams, "TaskID">;
@@ -10,7 +10,8 @@ export function createDownloads(api = downloadAPI) {
   const cards = ref<GalleryCard[]>([]);
   const error = ref("");
   const removing = ref(false);
-  const recycleConfirmation = ref<{ ids: string[]; names: string[]; skipped: number }>();
+  const recycleConfirmation = ref<{ ids: string[]; names: string[]; skipped: number; plan?: DeletePlan; deleteFiles: boolean }>();
+  const managementError = ref("");
   const active = ref<{ id: string; accepted: boolean; cancelling: boolean; terminal: boolean; cards: GalleryCard[] }>();
   const isDownloading = computed(() => !!active.value);
 
@@ -113,25 +114,34 @@ export function createDownloads(api = downloadAPI) {
   };
   const recycleMultiple = async (ids: string[]) => {
     if (removing.value) return;
-    await refreshFileStates();
-    const targets = cards.value.filter(card => ids.includes(card.id) && card.status === "done" && card.canRecycle);
-    if (!targets.length) { error.value = "没有可安全删除的文件"; return; }
-    const skipped = ids.length - targets.length;
-    recycleConfirmation.value = { ids: targets.map(card => card.id), names: targets.map(card => card.finalPath.split(/[\\/]/).pop() || card.title), skipped };
+    managementError.value = "";
+    const targets = cards.value.filter(card => ids.includes(card.id) && !isActiveStatus(card.status));
+    if (!targets.length) return;
+    removing.value = true;
+    try {
+      const plan = await api.prepareDeletion(targets.map(card => card.id));
+      recycleConfirmation.value = { ids: targets.map(card => card.id), names: targets.map(card => card.finalPath?.split(/[\\/]/).pop() || card.title), skipped: plan.skipped, plan, deleteFiles: plan.targets.length > 0 };
+    } catch { managementError.value = "无法检查待删除文件，请重试"; }
+    finally { removing.value = false; }
   };
   const confirmRecycle = async () => {
     const confirmation = recycleConfirmation.value;
     if (!confirmation || removing.value) return;
-    recycleConfirmation.value = undefined;
+    if (!confirmation.deleteFiles) {
+      await removeMultiple(confirmation.ids);
+      recycleConfirmation.value = undefined;
+      return;
+    }
     removing.value = true;
     ++stateGeneration;
     try {
-      const results = await api.recycle(confirmation.ids);
+      const results = await api.executeDeletion(confirmation.plan!.token);
       const removed = results.filter(item => item.status === "recycled").map(item => item.id);
       cards.value = cards.value.filter(card => !removed.includes(card.id));
-      error.value = results.filter(item => item.status !== "recycled").map(item => item.message).filter(Boolean).join("；");
-    } catch { error.value = "文件操作失败，请重试"; }
-    finally { removing.value = false; await refreshFileStates(); }
+      managementError.value = results.filter(item => item.status !== "recycled" && item.status !== "cancelled").map(item => item.message).filter(Boolean).join("；");
+      recycleConfirmation.value = undefined;
+    } catch (cause) { managementError.value = cause instanceof Error ? cause.message : "文件操作失败，请重试"; }
+    finally { removing.value = false; await refreshFileStates().catch(() => {}); }
   };
 
   const loadHistory = async () => {
@@ -165,7 +175,7 @@ export function createDownloads(api = downloadAPI) {
       // 仅移除真正成功的记录，避免重启后失败记录重新出现。
       cards.value = cards.value.filter((card) => !removed.includes(card.id));
       if (removed.length < targets.length) {
-        error.value = "部分记录移除失败，请重试";
+        managementError.value = "部分记录移除失败，请重试";
       }
     } finally {
       removing.value = false;
@@ -181,24 +191,26 @@ export function createDownloads(api = downloadAPI) {
       } else if (action === "recycle") {
         await recycleMultiple([card.id]);
       } else if (action === "remove") {
-        await removeMultiple([card.id]);
+        await recycleMultiple([card.id]);
       } else if (action === "copy") {
         await navigator.clipboard.writeText(card.sourceUrl);
       } else {
         await api.open(card.id, action);
       }
     } catch {
-      error.value = "操作失败，请检查下载记录或本地文件";
+      managementError.value = "操作失败，请检查下载记录或本地文件";
     }
   };
 
-  return { recycleConfirmation, confirmRecycle, refreshFileStates, recycleMultiple, cards, error, isDownloading, isRemoving: removing, handleProgress, doDownload, doCancel, loadHistory, act, removeMultiple };
+  return { managementError, recycleConfirmation, confirmRecycle, refreshFileStates, recycleMultiple, cards, error, isDownloading, isRemoving: removing, handleProgress, doDownload, doCancel, loadHistory, act, removeMultiple };
 }
 
-export const progressPercent = (progress?: ProgressInfo) =>
-  progress && !isProcessingStage(progress.stage) && progress.total > 0
-    ? Math.floor(Math.max(0, Math.min(1, progress.downloaded / progress.total)) * 100)
-    : undefined;
+export const progressPercent = (progress?: ProgressInfo) => {
+  if (!progress || isProcessingStage(progress.stage) || progress.stage === "publishing") return undefined;
+  const total = progress.stage === "images" ? progress.total : progress.overallTotal;
+  const downloaded = progress.stage === "images" ? progress.downloaded : progress.overallDownloaded;
+  return total > 0 && downloaded < total ? Math.floor(Math.max(0, Math.min(1, downloaded / total)) * 100) : undefined;
+};
 
 export const useDownloads = () => {
   const state = createDownloads();

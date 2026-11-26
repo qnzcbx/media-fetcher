@@ -19,6 +19,19 @@ export interface BiliQRSession {
   url: string;
 }
 
+export interface DeletePlan {
+  token: string;
+  targets: DeleteTarget[];
+  skipped: number;
+}
+
+export interface DeleteTarget {
+  id: string;
+  name: string;
+  path: string;
+  legacy: boolean;
+}
+
 export interface DownloadFileState {
   id: string;
   status: string;
@@ -89,6 +102,8 @@ export interface PollResult {
 }
 
 export interface ProgressInfo {
+  overallDownloaded: number;
+  overallTotal: number;
   taskId: string;
   itemId: string;
   record?: DownloadRecord;
@@ -140,6 +155,7 @@ export const DesktopService = {
   /** DownloadDuration 按需补读旧记录，工具或文件不可用时仍保留历史。 */
   downloadDuration: bind<[string], number>("DesktopService.DownloadDuration", (id: string) => [id]),
   downloadHistory: bind<[], DownloadRecord[]>("DesktopService.DownloadHistory", () => []),
+  executeDownloadDeletion: bind<[string], RecycleResult[]>("DesktopService.ExecuteDownloadDeletion", (token: string) => [token]),
   extract: bind<[string, string], MediaInfoResponse>("DesktopService.Extract", (urlStr: string, accountID: string) => [urlStr, accountID]),
   fetchPreviewBase64: bind<[string, string], string>("DesktopService.FetchPreviewBase64", (imgUrl: string, siteId: string) => [imgUrl, siteId]),
   galleryThumbnail: bind<[string], string>("DesktopService.GalleryThumbnail", (id: string) => [id]),
@@ -150,6 +166,7 @@ export const DesktopService = {
   openDownloadDirectory: bind<[string], void>("DesktopService.OpenDownloadDirectory", (path: string) => [path]),
   openDownloadRecord: bind<[string, string], void>("DesktopService.OpenDownloadRecord", (id: string, action: string) => [id, action]),
   pollBiliQRCode: bind<[string], PollResult>("DesktopService.PollBiliQRCode", (qrcodeKey: string) => [qrcodeKey]),
+  prepareDownloadDeletion: bind<[string[]], DeletePlan>("DesktopService.PrepareDownloadDeletion", (ids: string[]) => [ids]),
   recycleDownloadFiles: bind<[string[]], RecycleResult[]>("DesktopService.RecycleDownloadFiles", (ids: string[]) => [ids]),
   removeDownloadRecord: bind<[string], void>("DesktopService.RemoveDownloadRecord", (id: string) => [id]),
   selectDownloadDirectory: bind<[string], string>("DesktopService.SelectDownloadDirectory", (current: string) => [current]),

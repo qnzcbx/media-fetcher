@@ -1,9 +1,9 @@
 <script setup lang="ts">
 import { computed } from "vue";
 import { progressPercent, type GalleryCard } from "../../composables/useDownloads";
-import { isProcessingStage, stageLabel } from "../../utils/downloadStatus";
+import { stageLabel } from "../../utils/downloadStatus";
+
 const props = defineProps<{ card: GalleryCard }>();
-const processing = computed(() => isProcessingStage(props.card.progress?.stage));
 const percent = computed(() => progressPercent(props.card.progress));
 const label = computed(() => {
   const { status, progress } = props.card;
@@ -16,16 +16,22 @@ const label = computed(() => {
 </script>
 
 <template>
-  <div v-if="card.status !== 'done'" class="shade" role="status">
-    <strong v-if="card.status === 'running' && percent !== undefined">{{ percent }}%</strong>
-    <span v-if="card.status === 'running' && processing" class="spinner" aria-hidden="true"></span>
+  <div v-if="card.status !== 'done'" class="shade" role="status" :aria-label="label">
+    <strong v-if="card.status === 'running' && percent !== undefined">
+      {{ percent }}%
+    </strong>
+    <span
+      v-if="card.status === 'running' && percent === undefined"
+      class="spinner"
+      aria-hidden="true"
+    ></span>
     <progress
-      v-if="card.status === 'running' && !processing"
+      v-if="card.status === 'running' && percent !== undefined"
       :value="percent"
       max="100"
       :aria-label="label"
     />
-    <span>{{ label }}</span>
+    <span v-if="['failed', 'cancelled', 'cancelling'].includes(card.status)">{{ label }}</span>
   </div>
 </template>
 

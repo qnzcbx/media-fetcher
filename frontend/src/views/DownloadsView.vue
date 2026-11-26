@@ -51,11 +51,7 @@ const handleRemove = () => {
     exitSelectionMode();
     return;
   }
-  const confirm = window.confirm(`移除选中的 ${ids.length} 条下载记录？本地文件将保留。`);
-  if (!confirm) return;
-
-  emit("removeSelected", ids);
-  exitSelectionMode();
+  emit("recycleSelected", ids);
 };
 </script>
 
@@ -111,7 +107,7 @@ const handleRemove = () => {
         </div>
       </div>
 
-      <GallerySelectionBar
+      <GallerySelectionBar :busy="busy"
       @recycle="emit('recycleSelected', [...selectedIds])"
         v-if="isSelectionMode"
         class="selection-bar-footer"

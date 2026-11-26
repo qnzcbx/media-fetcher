@@ -47,9 +47,12 @@ watch(
   },
 );
 
-watch(() => props.cards.map(card => card.id), (ids) => {
-  for (const id of selectedIds.value) if (!ids.includes(id)) selectedIds.value.delete(id);
-});
+watch(
+  () => props.cards.map((card) => card.id),
+  (ids) => {
+    for (const id of selectedIds.value) if (!ids.includes(id)) selectedIds.value.delete(id);
+  },
+);
 watch(filter, () => {
   exitSelectionMode();
 });
@@ -66,11 +69,7 @@ const handleRemove = () => {
     exitSelectionMode();
     return;
   }
-  const confirm = window.confirm(`移除选中的 ${ids.length} 条下载记录？本地文件将保留。`);
-  if (!confirm) return;
-
-  emit("removeSelected", ids);
-  exitSelectionMode();
+  emit("recycleSelected", ids);
 };
 </script>
 
@@ -143,6 +142,7 @@ const handleRemove = () => {
     </div>
 
     <GallerySelectionBar
+      :busy="busy"
       @recycle="emit('recycleSelected', [...selectedIds])"
       v-if="selectedCount > 0"
       :count="selectedCount"

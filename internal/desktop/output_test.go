@@ -58,7 +58,9 @@ func TestDesktopMediaOutputs(t *testing.T) {
 	files := http.FileServer(http.Dir(fixtures))
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		mu.Lock()
-		counts[r.URL.Path]++
+		if r.Method == http.MethodGet {
+			counts[r.URL.Path]++
+		}
 		mu.Unlock()
 		files.ServeHTTP(w, r)
 	}))

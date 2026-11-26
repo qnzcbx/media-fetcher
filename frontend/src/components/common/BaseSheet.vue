@@ -42,6 +42,7 @@ const emit = defineEmits<{
           }"
         />
       </Transition>
+      
       <Transition :name="`sheet-${side}`">
         <DialogContent
           v-if="open"
@@ -54,7 +55,9 @@ const emit = defineEmits<{
           }"
         >
           <DialogTitle v-if="title" class="sr-only">{{ title }}</DialogTitle>
-          <DialogDescription v-if="description" class="sr-only">{{ description }}</DialogDescription>
+          <DialogDescription v-if="description" class="sr-only">
+            {{ description }}
+          </DialogDescription>
           <slot></slot>
         </DialogContent>
       </Transition>
@@ -79,12 +82,12 @@ const emit = defineEmits<{
   position: fixed;
   inset: 0;
   background: rgba(0, 0, 0, var(--overlay-opacity));
-  z-index: 999;
+  z-index: var(--layer-sheet-overlay);
 }
 
 .sheet-content {
   position: fixed;
-  z-index: 1000;
+  z-index: var(--layer-sheet);
   background: var(--bg-color);
   box-shadow: 0 0 24px var(--shadow-color);
   display: flex;

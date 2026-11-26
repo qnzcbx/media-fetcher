@@ -12,7 +12,7 @@ const STAGE_LABELS: Record<string, string> = {
 
 // 这些阶段没有可靠的整体进度，不能虚构百分比。
 export const isProcessingStage = (stage?: string) =>
-  ["muxing", "remuxing", "transcoding"].includes(stage ?? "");
+  ["muxing", "remuxing", "transcoding", "publishing"].includes(stage ?? "");
 
 export const stageLabel = (stage?: string) => STAGE_LABELS[stage ?? ""] ?? "下载中";
 
@@ -25,10 +25,8 @@ export const formatMegabytes = (bytes: number) =>
 
 // 详细列表的进度副标题：处理阶段使用统一文案，其余展示真实字节进度。
 export const progressText = (progress?: ProgressInfo) => {
-  if (!progress) return "下载中";
-  if (isProcessingStage(progress.stage)) return stageLabel(progress.stage);
-  if (progress.total > 0) {
-    return `${formatMegabytes(progress.downloaded)} / ${formatMegabytes(progress.total)}`;
-  }
-  return stageLabel(progress.stage);
+  if (!progress || isProcessingStage(progress.stage)) return "";
+  const total = progress.stage === "images" ? progress.total : progress.overallTotal;
+  const downloaded = progress.stage === "images" ? progress.downloaded : progress.overallDownloaded;
+  return total > 0 && downloaded < total ? Math.floor(downloaded / total * 100) + "%" : "";
 };

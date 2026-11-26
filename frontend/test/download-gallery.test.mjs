@@ -78,7 +78,7 @@ try {
   ];
   await removeState.removeMultiple(["task-1", "task-2", "task-3", "missing"]);
   assert.deepEqual(removeState.cards.value.map((card) => card.id), ["task-2", "task-3"]);
-  assert.equal(removeState.error.value, "部分记录移除失败，请重试");
+  assert.equal(removeState.managementError.value, "部分记录移除失败，请重试");
 
   // 批量移除期间重复提交只执行一次。
   let calls = 0;
@@ -99,12 +99,12 @@ try {
 
   for (const status of ["queued", "running", "cancelling"]) {
     guardState.cards.value = [{ id: "active", status }];
-    await guardState.act({ id: "active", status: "done" }, "remove");
+    await guardState.removeMultiple(["active"]);
     assert.equal(guardState.cards.value.length, 1);
   }
   assert.equal(calls, 1);
   guardState.cards.value = [{ id: "active", status: "done" }];
-  await guardState.act(guardState.cards.value[0], "remove");
+  await guardState.removeMultiple(["active"]);
   assert.equal(calls, 2);
   assert.equal(guardState.cards.value.length, 0);
 
@@ -134,22 +134,29 @@ try {
 
   let recycleCalls = 0;
   const files = createDownloads({
-    fileStates: async ids => ids.map(id => ({ id, status: id === "missing" ? "missing" : "available", canRecycle: id !== "missing" })),
-    recycle: async ids => { recycleCalls++; return ids.map(id => ({id,status:id === "ok" ? "recycled" : "failed",message:"占用"})); },
+    fileStates: async ids => ids.map(id => ({ id, status: "available", canRecycle: true })),
+    prepareDeletion: async ids => ({token:"plan",targets:ids.filter(id=>id!=="missing").map(id=>({id,path:"C:\\"+id,name:id,legacy:true})),skipped:ids.includes("missing")?1:0}),
+    executeDeletion: async () => { recycleCalls++; return [{id:"ok",status:"recycled"},{id:"bad",status:"failed",message:"占用"}]; },
     remove: async () => {},
   });
-  files.cards.value = [{id:"ok",status:"done",finalPath:"C:\\ok.mp4"},{id:"bad",status:"done",finalPath:"C:\\bad.mp4"},{id:"missing",status:"done"},{id:"active",status:"running"}];
-  await files.refreshFileStates();
-  assert.equal(files.cards.value[2].fileState,"missing");
+  files.cards.value = [{id:"ok",status:"done",finalPath:"C:\\ok"},{id:"bad",status:"done",finalPath:"C:\\bad"},{id:"missing",status:"done"},{id:"active",status:"running"}];
   await files.recycleMultiple(["ok","bad","missing","active"]);
-  assert.deepEqual(files.recycleConfirmation.value.ids,["ok","bad"]);
-  assert.equal(files.recycleConfirmation.value.skipped,2);
+  assert.deepEqual(files.recycleConfirmation.value.ids,["ok","bad","missing"]);
+  assert.equal(files.recycleConfirmation.value.deleteFiles,true);
   files.recycleConfirmation.value = undefined;
   assert.equal(recycleCalls,0);
   await files.recycleMultiple(["ok","bad"]);
   await files.confirmRecycle();
   assert.equal(recycleCalls,1);
   assert.deepEqual(files.cards.value.map(card=>card.id),["bad","missing","active"]);
+  await files.recycleMultiple(["bad"]);
+  files.recycleConfirmation.value.deleteFiles=false;
+  await files.confirmRecycle();
+  assert.equal(recycleCalls,1);
+  assert.deepEqual(files.cards.value.map(card=>card.id),["missing","active"]);
+  assert.equal(progressPercent(event("video","media",latest,{overallDownloaded:180,overallTotal:200})),90);
+  assert.equal(progressPercent(event("audio","media",latest,{overallDownloaded:190,overallTotal:200})),95);
+  assert.equal(progressPercent(event("publishing","media",latest,{overallDownloaded:200,overallTotal:200})),undefined);
   console.log("下载图库任务状态回归通过");
 } finally {
   await vite.close();

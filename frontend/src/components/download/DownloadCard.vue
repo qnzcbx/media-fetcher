@@ -75,7 +75,6 @@ const pick = (action: string) => {
     </button>
     <div v-if="menu" class="actions">
       <template v-if="card.status === 'done'">
-        <button v-if="card.canRecycle" class="recycle" @click.stop="pick('recycle')">删除文件</button>
         <button :disabled="card.fileState === 'missing' || card.fileState === 'unavailable'" @click="pick('file')">打开文件</button>
         <button @click="pick('folder')">打开目录</button>
         <button @click="pick('copy')">复制原链接</button>
@@ -83,8 +82,8 @@ const pick = (action: string) => {
       <template v-if="card.status === 'failed' || card.status === 'cancelled'">
         <button v-if="card.retry" :disabled="busy" @click="pick('retry')">重试</button>
       </template>
-      <button v-if="['done', 'failed', 'cancelled'].includes(card.status)" @click="pick('remove')">
-        移除记录
+      <button v-if="['done', 'failed', 'cancelled'].includes(card.status)" @click="pick('recycle')">
+        删除
       </button>
       <button
         v-else

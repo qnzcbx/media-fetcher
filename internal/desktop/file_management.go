@@ -19,6 +19,8 @@ type RecycleResult struct {
 	Message string `json:"message"`
 }
 
+var errRecycleUncertain = errors.New("系统未确认文件进入回收站，请检查文件状态")
+
 var errRecycleCancelled = errors.New("已取消")
 
 func (s *DesktopService) fileState(r DownloadRecord) DownloadFileState {
@@ -83,6 +85,9 @@ func (s *DesktopService) GetDownloadFileStates(ids []string) ([]DownloadFileStat
 func (s *DesktopService) RecycleDownloadFiles(ids []string) ([]RecycleResult, error) {
 	s.fileMu.Lock()
 	defer s.fileMu.Unlock()
+	return s.recycleDownloadFiles(ids, nil)
+}
+func (s *DesktopService) recycleDownloadFiles(ids []string, confirmed map[string]string) ([]RecycleResult, error) {
 	selected := make(map[string]bool)
 	for _, id := range ids {
 		selected[id] = true
@@ -98,7 +103,11 @@ func (s *DesktopService) RecycleDownloadFiles(ids []string) ([]RecycleResult, er
 			continue
 		}
 		delete(selected, r.ID)
-		state := s.fileState(r)
+		check := r
+		if check.FileIdentity == "" {
+			check.FileIdentity = confirmed[r.ID]
+		}
+		state := s.fileState(check)
 		key := strings.ToLower(filepath.Clean(r.FinalPath))
 		result := RecycleResult{ID: r.ID, Status: "failed", Message: state.Message}
 		if result.Message == "" {
@@ -133,6 +142,10 @@ func (s *DesktopService) RecycleDownloadFiles(ids []string) ([]RecycleResult, er
 				err := recycle(r.FinalPath)
 				if err != nil {
 					result.Message = "无法移至回收站，文件仍保留"
+					if errors.Is(err, errRecycleUncertain) {
+						result.Status = "uncertain"
+						result.Message = err.Error()
+					}
 					if errors.Is(err, errRecycleCancelled) {
 						result.Status = "cancelled"
 						result.Message = "已取消"

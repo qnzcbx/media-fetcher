@@ -41,6 +41,7 @@ type DesktopService struct {
 	historyDir   string
 	historyMu    sync.Mutex
 	fileMu       sync.Mutex
+	deletePlans  map[string]deleteSnapshot
 	recycleFile  func(string) error
 }
 
@@ -291,14 +292,16 @@ type DownloadParams struct {
 var ProgressEvent = mygo.NewEvent[ProgressInfo]("progress")
 
 type ProgressInfo struct {
-	TaskID     string          `json:"taskId"`
-	ItemID     string          `json:"itemId"`
-	Record     *DownloadRecord `json:"record,omitempty"`
-	Stage      string          `json:"stage"` // "video", "audio", "muxing", "done", "error"
-	Downloaded int64           `json:"downloaded"`
-	Total      int64           `json:"total"`
-	Message    string          `json:"message"`
-	FinalPath  string          `json:"finalPath"`
+	OverallDownloaded int64           `json:"overallDownloaded"`
+	OverallTotal      int64           `json:"overallTotal"`
+	TaskID            string          `json:"taskId"`
+	ItemID            string          `json:"itemId"`
+	Record            *DownloadRecord `json:"record,omitempty"`
+	Stage             string          `json:"stage"` // "video", "audio", "muxing", "done", "error"
+	Downloaded        int64           `json:"downloaded"`
+	Total             int64           `json:"total"`
+	Message           string          `json:"message"`
+	FinalPath         string          `json:"finalPath"`
 }
 
 func (s *DesktopService) StartDownload(params DownloadParams) error {
@@ -517,6 +520,7 @@ func (s *DesktopService) doDownload(ctx context.Context, params DownloadParams) 
 				}
 			}
 			if dlErr == nil {
+				s.emitDownload(params.TaskID, itemID, ProgressInfo{Stage: "publishing"})
 				path, dlErr = publishUnique(ctx, path, filepath.Join(outputDir, filepath.Base(path)))
 			}
 			if dlErr != nil {
@@ -570,19 +574,26 @@ func (s *DesktopService) doDownload(ctx context.Context, params DownloadParams) 
 		}
 	}
 
+	aggregate := trackProgress{}
+	completeMode := targetVideo != nil && targetAudio != nil
+	if completeMode {
+		aggregate.total[0] = probeTrackSize(ctx, client, targetVideo.URL)
+		aggregate.total[1] = probeTrackSize(ctx, client, targetAudio.URL)
+	}
+	progress := func(track int, stage string, downloaded, total int64) {
+		overallDownloaded, overallTotal := downloaded, total
+		if completeMode {
+			overallDownloaded, overallTotal = aggregate.update(track, downloaded, total)
+		}
+		s.emitDownload(params.TaskID, "media", ProgressInfo{Stage: stage, Downloaded: downloaded, Total: total, OverallDownloaded: overallDownloaded, OverallTotal: overallTotal})
+	}
+
 	if targetVideo != nil {
 		opts := downloader.DownloadOptions{
-			OutputDir: workDir,
-			Filename:  "video.tmp",
-			Referer:   "https://www.bilibili.com",
-			OnProgress: func(downloaded, total int64) {
-				s.emitDownload(params.TaskID, "media", ProgressInfo{
-					Stage:      "video",
-					Downloaded: downloaded,
-					Total:      total,
-					Message:    "正在下载视频",
-				})
-			},
+			OutputDir:  workDir,
+			Filename:   "video.tmp",
+			Referer:    "https://www.bilibili.com",
+			OnProgress: func(downloaded, total int64) { progress(0, "video", downloaded, total) },
 		}
 
 		var dlErr error
@@ -604,17 +615,10 @@ func (s *DesktopService) doDownload(ctx context.Context, params DownloadParams) 
 
 	if targetAudio != nil {
 		opts := downloader.DownloadOptions{
-			OutputDir: workDir,
-			Filename:  "audio.tmp",
-			Referer:   "https://www.bilibili.com",
-			OnProgress: func(downloaded, total int64) {
-				s.emitDownload(params.TaskID, "media", ProgressInfo{
-					Stage:      "audio",
-					Downloaded: downloaded,
-					Total:      total,
-					Message:    "正在下载音轨",
-				})
-			},
+			OutputDir:  workDir,
+			Filename:   "audio.tmp",
+			Referer:    "https://www.bilibili.com",
+			OnProgress: func(downloaded, total int64) { progress(1, "audio", downloaded, total) },
 		}
 		var dlErr error
 		downloadedAudio, dlErr = d.Download(ctx, nil, targetAudio.URL, opts)
@@ -659,6 +663,7 @@ func (s *DesktopService) doDownload(ctx context.Context, params DownloadParams) 
 			return &outputFailure{err}
 		}
 	}
+	s.emitDownload(params.TaskID, "media", ProgressInfo{Stage: "publishing"})
 	finalOut, err := publishUnique(ctx, staged, filepath.Join(outputDir, title+"."+format))
 	if err != nil {
 		return fmt.Errorf("文件发布失败: %w", err)

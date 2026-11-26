@@ -3,6 +3,10 @@
  * UnoCSS theme.colors 只映射这里的变量，不维护第二份色值表。
  */
 :root {
+  --layer-sheet-overlay: 100;
+  --layer-sheet: 101;
+  --layer-confirm-overlay: 200;
+  --layer-confirm: 201;
   color-scheme: light;
 
   --bg-color: #fafafa;
