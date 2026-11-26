@@ -9,10 +9,9 @@ import (
 )
 
 type DeleteTarget struct {
-	ID     string `json:"id"`
-	Name   string `json:"name"`
-	Path   string `json:"path"`
-	Legacy bool   `json:"legacy"`
+	ID   string `json:"id"`
+	Name string `json:"name"`
+	Path string `json:"path"`
 }
 type DeletePlan struct {
 	Token   string         `json:"token"`
@@ -51,16 +50,11 @@ func (s *DesktopService) PrepareDownloadDeletion(ids []string) (DeletePlan, erro
 		if !containsID(ids, r.ID) {
 			continue
 		}
-		check := r
-		legacy := r.FileIdentity == ""
 		info, err := os.Lstat(r.FinalPath)
-		if err == nil && legacy {
-			check.FileIdentity = fileIdentity(info)
-		}
-		if err != nil || !s.fileState(check).CanRecycle {
+		if err != nil || !s.fileState(r).CanRecycle {
 			continue
 		}
-		plan.Targets = append(plan.Targets, DeleteTarget{ID: r.ID, Name: info.Name(), Path: r.FinalPath, Legacy: legacy})
+		plan.Targets = append(plan.Targets, DeleteTarget{ID: r.ID, Name: info.Name(), Path: r.FinalPath})
 		snapshot.identities[r.ID] = fileIdentity(info)
 		snapshot.records[r.ID] = r
 	}
@@ -81,7 +75,6 @@ func (s *DesktopService) ExecuteDownloadDeletion(token string) ([]RecycleResult,
 	if err != nil {
 		return nil, err
 	}
-	checked := map[string]string{}
 	ids := []string{}
 	for _, r := range records {
 		expected, selected := plan.identities[r.ID]
@@ -93,17 +86,13 @@ func (s *DesktopService) ExecuteDownloadDeletion(token string) ([]RecycleResult,
 		if err != nil || r.FinalPath != original.FinalPath || r.FileIdentity != original.FileIdentity || fileIdentity(info) != expected {
 			return nil, errors.New("文件在确认期间发生变化，请重新检查")
 		}
-		if r.FileIdentity == "" {
-			r.FileIdentity = expected
-		}
 		if !s.fileState(r).CanRecycle {
 			return nil, errors.New("文件已不可安全回收")
 		}
-		checked[r.ID] = expected
 		ids = append(ids, r.ID)
 	}
 	if len(ids) != len(plan.identities) {
 		return nil, errors.New("下载记录已变化，请重新操作")
 	}
-	return s.recycleDownloadFiles(ids, checked)
+	return s.recycleDownloadFiles(ids)
 }

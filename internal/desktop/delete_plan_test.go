@@ -7,22 +7,18 @@ import (
 	"time"
 )
 
-func TestLegacyDeletePlan(t *testing.T) {
+func TestDeletePlanIdentity(t *testing.T) {
 	s := &DesktopService{historyDir: t.TempDir()}
-	path := filepath.Join(t.TempDir(), "legacy.mp4")
-	if err := os.WriteFile(path, []byte("legacy"), 0600); err != nil {
+	path := filepath.Join(t.TempDir(), "media.mp4")
+	if err := os.WriteFile(path, []byte("fixture"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	if err := writeHistory(s.historyDir, []DownloadRecord{{ID: "old", Status: "done", FinalPath: path}}); err != nil {
+	if err := writeHistory(s.historyDir, []DownloadRecord{{ID: "one", Status: "done", FinalPath: path, FileIdentity: fileIdentity(mustStat(t, path))}}); err != nil {
 		t.Fatal(err)
 	}
-	plan, err := s.PrepareDownloadDeletion([]string{"old"})
-	if err != nil || len(plan.Targets) != 1 || !plan.Targets[0].Legacy {
+	plan, err := s.PrepareDownloadDeletion([]string{"one"})
+	if err != nil || len(plan.Targets) != 1 {
 		t.Fatalf("%+v %v", plan, err)
-	}
-	records, _ := s.DownloadHistory()
-	if records[0].FileIdentity != "" {
-		t.Fatal("旧身份被伪造")
 	}
 	if err := os.WriteFile(path, []byte("changed"), 0600); err != nil {
 		t.Fatal(err)
@@ -33,7 +29,12 @@ func TestLegacyDeletePlan(t *testing.T) {
 	if _, err := s.ExecuteDownloadDeletion(plan.Token); err == nil {
 		t.Fatal("重复计划被接受")
 	}
-	plan, err = s.PrepareDownloadDeletion([]string{"old"})
+	records, _ := s.DownloadHistory()
+	records[0].FileIdentity = fileIdentity(mustStat(t, path))
+	if err := writeHistory(s.historyDir, records); err != nil {
+		t.Fatal(err)
+	}
+	plan, err = s.PrepareDownloadDeletion([]string{"one"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -67,4 +68,13 @@ func TestOverallTrackProgress(t *testing.T) {
 	if n, total := p.update(1, 5, 20); n != 185 || total != 200 {
 		t.Fatal(n, total)
 	}
+}
+
+func mustStat(t *testing.T, path string) os.FileInfo {
+	t.Helper()
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return info
 }

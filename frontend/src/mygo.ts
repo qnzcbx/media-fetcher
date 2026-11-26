@@ -29,7 +29,6 @@ export interface DeleteTarget {
   id: string;
   name: string;
   path: string;
-  legacy: boolean;
 }
 
 export interface DownloadFileState {
@@ -167,7 +166,6 @@ export const DesktopService = {
   openDownloadRecord: bind<[string, string], void>("DesktopService.OpenDownloadRecord", (id: string, action: string) => [id, action]),
   pollBiliQRCode: bind<[string], PollResult>("DesktopService.PollBiliQRCode", (qrcodeKey: string) => [qrcodeKey]),
   prepareDownloadDeletion: bind<[string[]], DeletePlan>("DesktopService.PrepareDownloadDeletion", (ids: string[]) => [ids]),
-  recycleDownloadFiles: bind<[string[]], RecycleResult[]>("DesktopService.RecycleDownloadFiles", (ids: string[]) => [ids]),
   removeDownloadRecord: bind<[string], void>("DesktopService.RemoveDownloadRecord", (id: string) => [id]),
   selectDownloadDirectory: bind<[string], string>("DesktopService.SelectDownloadDirectory", (current: string) => [current]),
   setWindow: bind<[Window | null], void>("DesktopService.SetWindow", (w: Window | null) => [w]),

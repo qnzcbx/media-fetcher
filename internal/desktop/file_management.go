@@ -82,12 +82,7 @@ func (s *DesktopService) GetDownloadFileStates(ids []string) ([]DownloadFileStat
 	}
 	return result, nil
 }
-func (s *DesktopService) RecycleDownloadFiles(ids []string) ([]RecycleResult, error) {
-	s.fileMu.Lock()
-	defer s.fileMu.Unlock()
-	return s.recycleDownloadFiles(ids, nil)
-}
-func (s *DesktopService) recycleDownloadFiles(ids []string, confirmed map[string]string) ([]RecycleResult, error) {
+func (s *DesktopService) recycleDownloadFiles(ids []string) ([]RecycleResult, error) {
 	selected := make(map[string]bool)
 	for _, id := range ids {
 		selected[id] = true
@@ -103,11 +98,7 @@ func (s *DesktopService) recycleDownloadFiles(ids []string, confirmed map[string
 			continue
 		}
 		delete(selected, r.ID)
-		check := r
-		if check.FileIdentity == "" {
-			check.FileIdentity = confirmed[r.ID]
-		}
-		state := s.fileState(check)
+		state := s.fileState(r)
 		key := strings.ToLower(filepath.Clean(r.FinalPath))
 		result := RecycleResult{ID: r.ID, Status: "failed", Message: state.Message}
 		if result.Message == "" {

@@ -27,7 +27,7 @@ func TestFileManagement(t *testing.T) {
 		t.Fatalf("%+v %v", states, err)
 	}
 	s.recycleFile = func(string) error { return errRecycleCancelled }
-	results, err := s.RecycleDownloadFiles([]string{"one"})
+	results, err := executeTestDeletion(t, s, []string{"one"})
 	if err != nil || results[0].Status != "cancelled" {
 		t.Fatalf("%+v %v", results, err)
 	}
@@ -37,7 +37,7 @@ func TestFileManagement(t *testing.T) {
 	}
 	// 模拟 Shell 成功，只移动隔离目录中的文件，不访问系统回收站。
 	s.recycleFile = func(path string) error { return os.Rename(path, path+".mock-recycled") }
-	results, err = s.RecycleDownloadFiles([]string{"one"})
+	results, err = executeTestDeletion(t, s, []string{"one"})
 	if err != nil || results[0].Status != "recycled" {
 		t.Fatalf("%+v %v", results, err)
 	}
@@ -66,7 +66,7 @@ func TestFileIdentityAndInvalidPaths(t *testing.T) {
 	}
 	r.FileIdentity = ""
 	if s.fileState(r).CanRecycle {
-		t.Fatal("legacy identity fabricated")
+		t.Fatal("missing identity must not be accepted")
 	}
 	for _, path := range []string{"", ".", t.TempDir()} {
 		r.FinalPath = path
@@ -83,8 +83,8 @@ func TestFileIdentityAndInvalidPaths(t *testing.T) {
 	if err := writeHistory(s.historyDir, []DownloadRecord{r}); err != nil {
 		t.Fatal(err)
 	}
-	results, err := s.RecycleDownloadFiles([]string{r.ID})
-	if err != nil || results[0].Status == "recycled" {
+	results, err := executeTestDeletion(t, s, []string{r.ID})
+	if err != nil || len(results) > 0 && results[0].Status == "recycled" {
 		t.Fatalf("%+v %v", results, err)
 	}
 }
@@ -123,7 +123,7 @@ func TestRecyclePartialAndDuplicateTargets(t *testing.T) {
 		}
 		return os.Rename(path, path+".mock")
 	}
-	result, err := s.RecycleDownloadFiles([]string{"one", "duplicate", "two"})
+	result, err := executeTestDeletion(t, s, []string{"one", "duplicate", "two"})
 	if err != nil || len(result) != 3 || calls != 2 {
 		t.Fatalf("%+v %v calls=%d", result, err, calls)
 	}
@@ -136,4 +136,14 @@ func TestRecyclePartialAndDuplicateTargets(t *testing.T) {
 			t.Fatalf("%+v", records)
 		}
 	}
+}
+
+// 测试同样通过实际公开计划接口执行，不保留绕过确认的入口。
+func executeTestDeletion(t *testing.T, s *DesktopService, ids []string) ([]RecycleResult, error) {
+	t.Helper()
+	plan, err := s.PrepareDownloadDeletion(ids)
+	if err != nil {
+		return nil, err
+	}
+	return s.ExecuteDownloadDeletion(plan.Token)
 }

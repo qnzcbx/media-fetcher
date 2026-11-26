@@ -21,7 +21,7 @@ const label = computed(() => {
       {{ percent }}%
     </strong>
     <span
-      v-if="card.status === 'running' && percent === undefined"
+      v-if="card.status === 'queued' || (card.status === 'running' && percent === undefined)"
       class="spinner"
       aria-hidden="true"
     ></span>

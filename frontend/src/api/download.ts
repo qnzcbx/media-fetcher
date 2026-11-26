@@ -3,7 +3,6 @@ import { DesktopService, events } from "../mygo";
 export const downloadAPI = {
   validateDirectory: DesktopService.validateDownloadDirectory,
   fileStates: DesktopService.getDownloadFileStates,
-  recycle: DesktopService.recycleDownloadFiles,
   prepareDeletion: DesktopService.prepareDownloadDeletion,
   executeDeletion: DesktopService.executeDownloadDeletion,
   start: DesktopService.startDownload,

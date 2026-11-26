@@ -135,7 +135,7 @@ try {
   let recycleCalls = 0;
   const files = createDownloads({
     fileStates: async ids => ids.map(id => ({ id, status: "available", canRecycle: true })),
-    prepareDeletion: async ids => ({token:"plan",targets:ids.filter(id=>id!=="missing").map(id=>({id,path:"C:\\"+id,name:id,legacy:true})),skipped:ids.includes("missing")?1:0}),
+    prepareDeletion: async ids => ({token:"plan",targets:ids.filter(id=>id!=="missing").map(id=>({id,path:"C:\\"+id,name:id})),skipped:ids.includes("missing")?1:0}),
     executeDeletion: async () => { recycleCalls++; return [{id:"ok",status:"recycled"},{id:"bad",status:"failed",message:"占用"}]; },
     remove: async () => {},
   });
