@@ -42,8 +42,18 @@ type ImageItem struct {
 	Filename   string   `json:"filename,omitempty"`
 }
 
+// Episode 是可以选择的单集，下载时按 URL 重新解析。
+type Episode struct {
+	ID    string `json:"id"`
+	Title string `json:"title"`
+	URL   string `json:"url"`
+}
+
 // MediaInfo 统一且结构化地承载自各站点解析出的媒体资源元数据与流描述符。
 type MediaInfo struct {
+	Episodes      []Episode     `json:"episodes,omitempty"`
+	SeasonTitle   string        `json:"season_title,omitempty"`
+	EpisodeTitle  string        `json:"episode_title,omitempty"`
 	SiteID        string        `json:"site_id"`
 	ID            string        `json:"id"`
 	Title         string        `json:"title"`

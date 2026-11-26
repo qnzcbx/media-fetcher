@@ -73,6 +73,10 @@ func (s *DesktopService) SetWindow(w *mygo.Window) {
 
 // MediaInfoResponse 发送给前端的媒体信息响应结构体
 type MediaInfoResponse struct {
+	Episodes      []extractor.Episode     `json:"episodes"`
+	SourceURL     string                  `json:"sourceUrl"`
+	SeasonTitle   string                  `json:"seasonTitle"`
+	EpisodeTitle  string                  `json:"episodeTitle"`
 	SiteID        string                  `json:"siteId"`
 	ID            string                  `json:"id"`
 	Title         string                  `json:"title"`
@@ -103,6 +107,7 @@ func (s *DesktopService) Extract(urlStr string, accountID string) (MediaInfoResp
 	}
 
 	return MediaInfoResponse{
+		Episodes: media.Episodes, SourceURL: media.SourceURL, SeasonTitle: media.SeasonTitle, EpisodeTitle: media.EpisodeTitle,
 		SiteID:        media.SiteID,
 		ID:            media.ID,
 		Title:         media.Title,

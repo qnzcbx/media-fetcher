@@ -7,7 +7,7 @@ import AudioSelector from "./AudioSelector.vue";
 import AudioFormatSelector from "./AudioFormatSelector.vue";
 import DownloadModeSelector from "./DownloadModeSelector.vue";
 import ImageSelectionGrid from "./ImageSelectionGrid.vue";
-import type { ImageItem, MediaInfoResponse } from "../../mygo";
+import type { Episode, ImageItem, MediaInfoResponse } from "../../mygo";
 import type { UniqueVideoStream } from "../../utils/media";
 import type { AudioFormat } from "../../utils/preferences";
 
@@ -15,6 +15,8 @@ type DownloadMode = { id: string; label: string; enabled: boolean };
 
 const props = defineProps<{
   mediaInfo: MediaInfoResponse;
+  episodes?: Episode[];
+  episodeBusy?: boolean;
   previewMap: Record<string, string>;
 
   // 选择状态
@@ -34,6 +36,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   (e: "close"): void;
+  (e: "selectEpisode", url: string): void;
   (e: "startDownload", mode: string, format: string): void;
 
   (e: "update:selectedVideo", id: number, codec: string): void;
@@ -80,7 +83,7 @@ const downloadLabel = computed(() => {
 });
 
 const canDownload = computed(() =>
-  isImages.value ? props.selectedImages.length > 0 : !!chosen.value,
+  !props.episodeBusy && (isImages.value ? props.selectedImages.length > 0 : !!chosen.value),
 );
 
 const startDownload = () => {
@@ -100,9 +103,18 @@ const startDownload = () => {
       </div>
 
       <div class="rmodal-body">
+        <p v-if="mediaInfo.episodeTitle" class="episode-title">{{ mediaInfo.title }}</p>
         <p v-if="parseError" class="error-msg" role="alert">{{ parseError }}</p>
 
-        <template v-if="!isImages">
+        <label v-if="episodes?.length" class="episode-selector">
+          <span>剧集</span>
+          <select :key="`${mediaInfo.sourceUrl}:${episodeBusy}`" :value="mediaInfo.episodeTitle ? mediaInfo.sourceUrl : ''" :disabled="episodeBusy || downloadBusy"
+            @change="emit('selectEpisode', ($event.target as HTMLSelectElement).value)">
+            <option value="" disabled>选择剧集</option>
+            <option v-for="episode in episodes" :key="episode.id" :value="episode.url">{{ episode.title }}</option>
+          </select>
+        </label>
+        <template v-if="!isImages && (mediaInfo.videoStreams?.length || mediaInfo.audioStreams?.length)">
           <DownloadModeSelector
             class="mode-selector"
             :modelValue="chosen?.id ?? ''"
@@ -143,7 +155,7 @@ const startDownload = () => {
           </div>
         </template>
 
-        <div v-else class="resource-content">
+        <div v-else-if="isImages" class="resource-content">
           <ImageSelectionGrid
             :images="mediaInfo.images"
             :previewMap="previewMap"
@@ -164,6 +176,9 @@ const startDownload = () => {
 </template>
 
 <style scoped>
+.episode-title { margin: 0; font-size: 14px; color: var(--text-main); flex-shrink: 0; }
+.episode-selector { display: flex; align-items: center; gap: 12px; flex-shrink: 0; }
+.episode-selector select { flex: 1; min-width: 0; padding: 8px; border: 1px solid var(--border); border-radius: 8px; background: var(--input-bg); color: var(--text-main); font: inherit; }
 .resource-modal {
   background: var(--card-bg);
   border-radius: 16px;

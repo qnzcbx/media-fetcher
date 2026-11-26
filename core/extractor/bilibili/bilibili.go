@@ -110,7 +110,7 @@ func (e *BilibiliExtractor) Match(rawURL string) bool {
 		return false
 	}
 	parts := strings.Split(strings.Trim(u.Path, "/"), "/")
-	return len(parts) >= 2 && parts[0] == "video" && bvRE.MatchString(parts[1])
+	return (len(parts) >= 2 && parts[0] == "video" && bvRE.MatchString(parts[1])) || pgcRE.MatchString(u.Path)
 }
 
 // VideoTarget 保存解析得到的 BVID 和分 P 序号。
@@ -152,11 +152,6 @@ func parseVideoTarget(raw string) (VideoTarget, error) {
 
 // Extract 严格依据权限规则解析哔哩哔哩视频音轨流。
 func (e *BilibiliExtractor) Extract(ctx context.Context, rawURL string, opt extractor.ExtractOptions) (*extractor.MediaInfo, error) {
-	target, err := parseVideoTarget(rawURL)
-	if err != nil {
-		return nil, err
-	}
-
 	var client *http.Client
 	isAnon := true
 
@@ -180,6 +175,14 @@ func (e *BilibiliExtractor) Extract(ctx context.Context, rawURL string, opt extr
 		} else {
 			client = &http.Client{Timeout: 25 * time.Second}
 		}
+	}
+
+	if kind, id := parsePGCTarget(rawURL); kind != "" {
+		return e.extractPGC(ctx, client, kind, id, opt.AccountID, isAnon)
+	}
+	target, err := parseVideoTarget(rawURL)
+	if err != nil {
+		return nil, err
 	}
 
 	// 1. 获取视频基本信息（标题、CID、UP主、封面）
@@ -229,7 +232,12 @@ func (e *BilibiliExtractor) Extract(ctx context.Context, rawURL string, opt extr
 		SourceURL:     target.TargetURL,
 	}
 
-	for _, v := range playInfo.Data.Dash.Video {
+	appendDASH(media, playInfo.Data.Dash)
+	return media, nil
+}
+
+func appendDASH(media *extractor.MediaInfo, dash rawDash) {
+	for _, v := range dash.Video {
 		u := v.BaseURL
 		if u == "" {
 			u = v.BaseURL2
@@ -247,7 +255,7 @@ func (e *BilibiliExtractor) Extract(ctx context.Context, rawURL string, opt extr
 		})
 	}
 
-	for _, a := range playInfo.Data.Dash.Audio {
+	for _, a := range dash.Audio {
 		u := a.BaseURL
 		if u == "" {
 			u = a.BaseURL2
@@ -261,8 +269,6 @@ func (e *BilibiliExtractor) Extract(ctx context.Context, rawURL string, opt extr
 			BackupURLs: a.BackupURL,
 		})
 	}
-
-	return media, nil
 }
 
 func (e *BilibiliExtractor) fetchWbiPlayInfo(ctx context.Context, client *http.Client, bvid string, cid int64, referer string) (*rawPlayInfo, error) {

@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"context"
 	"encoding/base64"
+	"encoding/json"
+	"fmt"
 	"image/jpeg"
 	"io"
 	"net/http"
@@ -18,13 +20,14 @@ import (
 	"media-fetcher/core/auth"
 	"media-fetcher/core/downloader"
 	"media-fetcher/core/extractor"
+	"media-fetcher/core/extractor/bilibili"
 	"media-fetcher/pkg/vault"
 )
 
 type trackFixture struct{ base string }
 
-func (trackFixture) SiteID() string    { return "bilibili" }
-func (trackFixture) Match(string) bool { return true }
+func (trackFixture) SiteID() string        { return "bilibili" }
+func (trackFixture) Match(raw string) bool { return !strings.Contains(raw, "/bangumi/") }
 func (f trackFixture) Extract(context.Context, string, extractor.ExtractOptions) (*extractor.MediaInfo, error) {
 	return &extractor.MediaInfo{Title: "fixture", SiteID: "bilibili",
 		VideoStreams: []extractor.VideoStream{{ID: 80, Codec: "avc1", URL: f.base + "/video.m4s"}},
@@ -62,11 +65,28 @@ func TestDesktopMediaOutputs(t *testing.T) {
 			counts[r.URL.Path]++
 		}
 		mu.Unlock()
-		files.ServeHTTP(w, r)
+		switch r.URL.Path {
+		case "/pgc/view/web/season":
+			fmt.Fprint(w, `{"code":0,"result":{"title":"番剧","episodes":[{"id":1,"cid":11,"title":"1","long_title":"测试集"}]}}`)
+		case "/pgc/player/web/v2/playurl":
+			if r.URL.Query().Get("ep_id") != "1" || r.URL.Query().Get("cid") != "11" {
+				t.Error("错误剧集参数")
+			}
+			base := "http://" + r.Host
+			_ = json.NewEncoder(w).Encode(map[string]any{"result": map[string]any{"play_check": map[string]string{"play_detail": "PLAY_WHOLE"}, "video_info": map[string]any{"dash": map[string]any{
+				"video": []map[string]any{{"id": 80, "codecs": "avc1", "base_url": base + "/video.m4s"}},
+				"audio": []map[string]any{{"id": 30280, "base_url": base + "/audio.m4s"}},
+			}}}})
+		default:
+			files.ServeHTTP(w, r)
+		}
 	}))
 	defer server.Close()
 	registry := extractor.NewRegistry()
+	pgc := bilibili.New(nil)
+	pgc.SetBaseURLs(server.URL, server.URL)
 	registry.Register(trackFixture{server.URL})
+	registry.Register(pgc)
 	cred, err := auth.NewCredentialService(t.TempDir(), vault.NewMockVault("outputs"))
 	if err != nil {
 		t.Fatal(err)
@@ -79,6 +99,7 @@ func TestDesktopMediaOutputs(t *testing.T) {
 		streams, codec, container string
 	}{
 		{"complete", "", "mp4", 80, 30280, "audio,video", "", "mp4"},
+		{"pgc", "", "mp4", 80, 30280, "audio,video", "", "mp4"},
 		{"video", "", "mp4", 80, -1, "video", "", "mp4"},
 		{"audio", "m4a", "m4a", -1, 30280, "audio", "aac", "mp4"},
 		{"audio", "mp3", "mp3", -1, 30280, "audio", "mp3", "mp3"},
@@ -89,6 +110,14 @@ func TestDesktopMediaOutputs(t *testing.T) {
 			clear(counts)
 			mu.Unlock()
 			p := DownloadParams{TaskID: "0123456789abcdef0123456789abcdef", URL: "https://www.bilibili.com/video/BV1xx411c7mD", Mode: tc.mode, AudioFormat: tc.format, OutputDir: out, VideoID: tc.video, AudioID: tc.audio, VideoCodec: "avc1"}
+			if tc.mode == "pgc" {
+				p.Mode = "complete"
+				p.URL = "https://www.bilibili.com/bangumi/play/ep1/"
+				parsed, err := s.Extract(p.URL, "")
+				if err != nil || parsed.ID != "ep1" {
+					t.Fatalf("解析 PGC: %+v %v", parsed, err)
+				}
+			}
 			if err := validateDownload(p); err != nil {
 				t.Fatal(err)
 			}
@@ -97,7 +126,11 @@ func TestDesktopMediaOutputs(t *testing.T) {
 			}
 			mu.Lock()
 			v, a := counts["/video.m4s"], counts["/audio.m4s"]
+			pgcRequests := counts["/pgc/player/web/v2/playurl"]
 			mu.Unlock()
+			if tc.mode == "pgc" && pgcRequests != 2 {
+				t.Fatalf("下载必须重新获取所选剧集播放地址: %d", pgcRequests)
+			}
 			if (v == 1) != (tc.video >= 0) || (a == 1) != (tc.audio >= 0) || v > 1 || a > 1 {
 				t.Fatalf("轨道请求不匹配: %d %d", v, a)
 			}
@@ -125,7 +158,7 @@ func TestDesktopMediaOutputs(t *testing.T) {
 		})
 	}
 	records, err := s.DownloadHistory()
-	if err != nil || len(records) != 5 {
+	if err != nil || len(records) != 6 {
 		t.Fatalf("记录数: %v, %v", len(records), err)
 	}
 	paths := map[string]bool{}

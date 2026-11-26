@@ -13,7 +13,7 @@ import DownloadGalleryDrawer from "./components/download/DownloadGalleryDrawer.v
 import SettingsDrawer from "./components/settings/SettingsDrawer.vue";
 import DownloadsView from "./views/DownloadsView.vue";
 
-import type { MediaInfoResponse } from "./mygo";
+import type { Episode, MediaInfoResponse } from "./mygo";
 import { canUnlock, resolveParseTarget, useCredentials } from "./composables/useCredentials";
 import { useMediaParser } from "./composables/useMediaParser";
 import { useMediaPreview } from "./composables/useMediaPreview";
@@ -72,6 +72,7 @@ const drawerOpen = ref(false);
 const settingsOpen = ref(false);
 
 const url = ref("");
+const episodeOptions = ref<Episode[]>([]);
 let snapshot: { url: string; media: MediaInfoResponse } | undefined;
 const isPreparing = ref(false);
 
@@ -81,7 +82,7 @@ const openCredentials = () => {
 };
 
 const applyResult = (url: string, media: MediaInfoResponse) => {
-  snapshot = { url, media };
+  snapshot = { url: media.sourceUrl || url, media };
   initSelection(media);
   void loadPreviews(media);
 };
@@ -105,10 +106,20 @@ const handleParse = async () => {
     target = resolveParseTarget(input, getActiveAccountId);
     if (url.value === input) url.value = target.url;
     const res = await parse(target.url, target.accountId);
-    if (res) applyResult(target.url, res);
+    if (res) {
+      episodeOptions.value = res.episodes?.length && !res.videoStreams?.length ? res.episodes : [];
+      applyResult(target.url, res);
+    }
   } finally {
     isPreparing.value = false;
   }
+};
+
+const handleEpisode = async (episodeURL: string) => {
+  const original = snapshot;
+  if (!original || isParsing.value || !episodeOptions.value.some((ep) => ep.url === episodeURL)) return;
+  const res = await parse(episodeURL, original.media.usedAccountId, () => snapshot === original && mediaInfo.value === original.media);
+  if (res) applyResult(episodeURL, res);
 };
 
 const handleStartDownload = async (mode: string, format: string) => {
@@ -240,6 +251,9 @@ const handleUnlock = () => {
 
     <!-- Resource Selection Modal -->
     <ResourcePicker
+      :episodes="episodeOptions"
+      :episodeBusy="isParsing"
+      @selectEpisode="handleEpisode"
       v-if="mediaInfo"
       :mediaInfo="mediaInfo"
       :parseError="parseError || credentialError || downloadError"

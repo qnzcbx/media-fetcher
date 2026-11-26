@@ -47,6 +47,12 @@ try {
     assert.equal(resolveParseTarget(unsupported, state.getActiveAccountId).url, "");
   }
 
+  for (const kind of ["ep748435", "ss123"]) {
+    const url = `https://www.bilibili.com/bangumi/play/${kind}/`;
+    assert.deepEqual(resolveParseTarget(`分享 ${url}`, state.getActiveAccountId),
+      { url, siteId: "bilibili", accountId: "test-account" });
+  }
+
   const anonymous = { siteId: "bilibili", isAnonymous: true, usedAccountId: "" };
   assert.equal(canUnlock(anonymous, true, ""), true);
   assert.equal(canUnlock(anonymous, false, ""), false);

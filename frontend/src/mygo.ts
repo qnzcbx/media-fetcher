@@ -73,6 +73,12 @@ export interface DownloadRecord {
   fileSize?: number;
 }
 
+export interface Episode {
+  id: string;
+  title: string;
+  url: string;
+}
+
 export interface ImageItem {
   index: number;
   url: string;
@@ -82,6 +88,10 @@ export interface ImageItem {
 
 /** MediaInfoResponse 发送给前端的媒体信息响应结构体 */
 export interface MediaInfoResponse {
+  episodes: Episode[];
+  sourceUrl: string;
+  seasonTitle: string;
+  episodeTitle: string;
   siteId: string;
   id: string;
   title: string;
