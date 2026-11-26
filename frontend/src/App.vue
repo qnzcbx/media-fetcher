@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import RecycleConfirmation from "./components/download/RecycleConfirmation.vue";
 import { ref, computed } from "vue";
 import AppHeader from "./components/home/AppHeader.vue";
 import BrandWordmark from "./components/home/BrandWordmark.vue";
@@ -56,6 +57,10 @@ const {
   doCancel,
   act,
   removeMultiple,
+  recycleMultiple,
+  recycleConfirmation,
+  confirmRecycle,
+  refreshFileStates,
 } = useDownloads();
 const { preferences, setTheme, setDefaultAudioFormat, setDownloadDirectory } = usePreferences();
 
@@ -160,6 +165,8 @@ const handleUnlock = () => {
 </script>
 
 <template>
+  <RecycleConfirmation :confirmation="recycleConfirmation" @cancel="recycleConfirmation = undefined" @confirm="confirmRecycle" />
+
   <div class="app-container" :class="{ 'app-container--downloads': currentView === 'downloads' }">
     <template v-if="currentView === 'home'">
       <AppHeader @openCredentials="openCredentials" @openSettings="settingsOpen = true" />
@@ -186,8 +193,8 @@ const handleUnlock = () => {
           :error="downloadError"
           @action="act"
           @cancel="doCancel"
-          @openDrawer="drawerOpen = true"
-          @openView="currentView = 'downloads'"
+          @openDrawer="drawerOpen = true; refreshFileStates()"
+          @openView="currentView = 'downloads'; refreshFileStates()"
         />
       </main>
     </template>
@@ -202,6 +209,7 @@ const handleUnlock = () => {
         @cancel="doCancel"
         @back="currentView = 'home'"
         @removeSelected="removeMultiple"
+      @recycleSelected="recycleMultiple"
       />
     </Transition>
 
@@ -214,6 +222,7 @@ const handleUnlock = () => {
       @cancel="doCancel"
       @close="drawerOpen = false"
       @removeSelected="removeMultiple"
+      @recycleSelected="recycleMultiple"
     />
 
     <SettingsDrawer

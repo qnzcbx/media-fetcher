@@ -131,6 +131,25 @@ try {
   assert.equal(isProcessingStage("transcoding"), true);
   assert.equal(isProcessingStage("video"), false);
 
+
+  let recycleCalls = 0;
+  const files = createDownloads({
+    fileStates: async ids => ids.map(id => ({ id, status: id === "missing" ? "missing" : "available", canRecycle: id !== "missing" })),
+    recycle: async ids => { recycleCalls++; return ids.map(id => ({id,status:id === "ok" ? "recycled" : "failed",message:"占用"})); },
+    remove: async () => {},
+  });
+  files.cards.value = [{id:"ok",status:"done",finalPath:"C:\\ok.mp4"},{id:"bad",status:"done",finalPath:"C:\\bad.mp4"},{id:"missing",status:"done"},{id:"active",status:"running"}];
+  await files.refreshFileStates();
+  assert.equal(files.cards.value[2].fileState,"missing");
+  await files.recycleMultiple(["ok","bad","missing","active"]);
+  assert.deepEqual(files.recycleConfirmation.value.ids,["ok","bad"]);
+  assert.equal(files.recycleConfirmation.value.skipped,2);
+  files.recycleConfirmation.value = undefined;
+  assert.equal(recycleCalls,0);
+  await files.recycleMultiple(["ok","bad"]);
+  await files.confirmRecycle();
+  assert.equal(recycleCalls,1);
+  assert.deepEqual(files.cards.value.map(card=>card.id),["bad","missing","active"]);
   console.log("下载图库任务状态回归通过");
 } finally {
   await vite.close();

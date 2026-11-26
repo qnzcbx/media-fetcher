@@ -4,12 +4,13 @@ import type { DownloadParams, DownloadRecord, MediaInfoResponse, ProgressInfo } 
 import { isActiveStatus, isProcessingStage } from "../utils/downloadStatus";
 
 type Request = Omit<DownloadParams, "TaskID">;
-export type GalleryCard = DownloadRecord & { preview?: string; progress?: ProgressInfo; retry?: Request };
+export type GalleryCard = DownloadRecord & { preview?: string; progress?: ProgressInfo; fileState?: string; canRecycle?: boolean; retry?: Request };
 
 export function createDownloads(api = downloadAPI) {
   const cards = ref<GalleryCard[]>([]);
   const error = ref("");
   const removing = ref(false);
+  const recycleConfirmation = ref<{ ids: string[]; names: string[]; skipped: number }>();
   const active = ref<{ id: string; accepted: boolean; cancelling: boolean; terminal: boolean; cards: GalleryCard[] }>();
   const isDownloading = computed(() => !!active.value);
 
@@ -25,6 +26,7 @@ export function createDownloads(api = downloadAPI) {
       }
       if (event.message) error.value = event.message;
       if (task.accepted) active.value = undefined;
+      void refreshFileStates().catch(() => {});
       return;
     }
 
@@ -98,11 +100,46 @@ export function createDownloads(api = downloadAPI) {
     }
   };
 
+  let stateGeneration = 0;
+  const refreshFileStates = async () => {
+    if (!api.fileStates) return;
+    const generation = ++stateGeneration;
+    const result = await api.fileStates(cards.value.filter(card => card.status === "done").map(card => card.id));
+    if (generation !== stateGeneration) return;
+    for (const state of result ?? []) {
+      const card = cards.value.find(card => card.id === state.id);
+      if (card) { card.fileState = state.status; card.canRecycle = state.canRecycle; }
+    }
+  };
+  const recycleMultiple = async (ids: string[]) => {
+    if (removing.value) return;
+    await refreshFileStates();
+    const targets = cards.value.filter(card => ids.includes(card.id) && card.status === "done" && card.canRecycle);
+    if (!targets.length) { error.value = "没有可安全删除的文件"; return; }
+    const skipped = ids.length - targets.length;
+    recycleConfirmation.value = { ids: targets.map(card => card.id), names: targets.map(card => card.finalPath.split(/[\\/]/).pop() || card.title), skipped };
+  };
+  const confirmRecycle = async () => {
+    const confirmation = recycleConfirmation.value;
+    if (!confirmation || removing.value) return;
+    recycleConfirmation.value = undefined;
+    removing.value = true;
+    ++stateGeneration;
+    try {
+      const results = await api.recycle(confirmation.ids);
+      const removed = results.filter(item => item.status === "recycled").map(item => item.id);
+      cards.value = cards.value.filter(card => !removed.includes(card.id));
+      error.value = results.filter(item => item.status !== "recycled").map(item => item.message).filter(Boolean).join("；");
+    } catch { error.value = "文件操作失败，请重试"; }
+    finally { removing.value = false; await refreshFileStates(); }
+  };
+
   const loadHistory = async () => {
     try {
       const history = await api.history();
       const known = new Set(cards.value.map((card) => card.id));
       cards.value = [...cards.value, ...(history ?? []).filter((card) => !known.has(card.id))];
+      await refreshFileStates();
     } catch {
       error.value = "无法读取下载历史";
     }
@@ -138,8 +175,11 @@ export function createDownloads(api = downloadAPI) {
   const act = async (card: GalleryCard, action: string) => {
     try {
       error.value = "";
+      if (action === "file" || action === "folder") await refreshFileStates();
       if (action === "retry" && card.retry) {
         if (await start(card.retry, [card])) cards.value = cards.value.filter((item) => item.id !== card.id);
+      } else if (action === "recycle") {
+        await recycleMultiple([card.id]);
       } else if (action === "remove") {
         await removeMultiple([card.id]);
       } else if (action === "copy") {
@@ -152,7 +192,7 @@ export function createDownloads(api = downloadAPI) {
     }
   };
 
-  return { cards, error, isDownloading, isRemoving: removing, handleProgress, doDownload, doCancel, loadHistory, act, removeMultiple };
+  return { recycleConfirmation, confirmRecycle, refreshFileStates, recycleMultiple, cards, error, isDownloading, isRemoving: removing, handleProgress, doDownload, doCancel, loadHistory, act, removeMultiple };
 }
 
 export const progressPercent = (progress?: ProgressInfo) =>
@@ -163,10 +203,13 @@ export const progressPercent = (progress?: ProgressInfo) =>
 export const useDownloads = () => {
   const state = createDownloads();
   let unsubscribe: (() => void) | undefined;
+  let lastFocus = 0;
+  const focus = () => { if (Date.now() - lastFocus < 2000) return; lastFocus = Date.now(); void state.refreshFileStates().catch(() => {}); };
   onMounted(() => {
+    window.addEventListener("focus", focus);
     unsubscribe = downloadAPI.subscribe(state.handleProgress);
     void state.loadHistory();
   });
-  onUnmounted(() => unsubscribe?.());
+  onUnmounted(() => { unsubscribe?.(); window.removeEventListener("focus", focus); });
   return state;
 };

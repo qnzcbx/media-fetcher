@@ -12,6 +12,7 @@ const emit = defineEmits<{
   cancel: [];
   back: [];
   removeSelected: [ids: string[]];
+  recycleSelected: [ids: string[]];
 }>();
 
 const filter = ref("");
@@ -36,6 +37,9 @@ const {
   selectedCount,
 } = useGallerySelection();
 
+watch(() => props.cards.map(card => card.id), (ids) => {
+  for (const id of selectedIds.value) if (!ids.includes(id)) selectedIds.value.delete(id);
+});
 watch(filter, () => {
   exitSelectionMode();
 });
@@ -108,6 +112,7 @@ const handleRemove = () => {
       </div>
 
       <GallerySelectionBar
+      @recycle="emit('recycleSelected', [...selectedIds])"
         v-if="isSelectionMode"
         class="selection-bar-footer"
         :count="selectedCount"

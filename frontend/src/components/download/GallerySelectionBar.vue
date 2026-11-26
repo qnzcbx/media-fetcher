@@ -11,6 +11,7 @@ const props = withDefaults(defineProps<{
 
 const emit = defineEmits<{
   (e: "remove"): void;
+  (e: "recycle"): void;
   (e: "selectAll"): void;
 }>();
 
@@ -25,6 +26,7 @@ const allSelected = computed(() => props.totalSelectable > 0 && props.count === 
         <button v-if="!hideSelectAll" class="btn-text" @click="$emit('selectAll')">{{ allSelected ? '取消全选' : '全选' }}</button>
       </div>
       <div class="right">
+        <button class="btn-danger" :disabled="count === 0" @click="$emit('recycle')">删除文件</button>
         <button class="btn-danger" :disabled="count === 0" @click="$emit('remove')">移除记录</button>
       </div>
     </div>

@@ -40,6 +40,8 @@ type DesktopService struct {
 	previewKeys  []string
 	historyDir   string
 	historyMu    sync.Mutex
+	fileMu       sync.Mutex
+	recycleFile  func(string) error
 }
 
 func NewDesktopService() (*DesktopService, error) {
@@ -403,6 +405,9 @@ func (s *DesktopService) doDownload(ctx context.Context, params DownloadParams) 
 			Title: media.Title, SourceURL: cleanSource(params.URL), FinalPath: path, CreatedAt: createdAt,
 			CompletedAt: time.Now(), Status: "done", ResourceID: resourceID, Codec: params.VideoCodec,
 			FileSize: fileSize,
+		}
+		if info, err := os.Stat(path); err == nil {
+			record.FileIdentity = fileIdentity(info)
 		}
 		record.Format = strings.TrimPrefix(strings.ToLower(filepath.Ext(path)), ".")
 		if kind != "image" {

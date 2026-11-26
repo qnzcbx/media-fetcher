@@ -5,7 +5,7 @@ import { downloadAPI } from "../../api/download";
 import type { GalleryCard } from "../../composables/useDownloads";
 import DownloadProgressOverlay from "./DownloadProgressOverlay.vue";
 
-const props = defineProps<{ card: GalleryCard; busy: boolean }>();
+const props = defineProps<{ card: GalleryCard; busy: boolean; hideMore?: boolean }>();
 const emit = defineEmits<{ action: [card: GalleryCard, action: string]; cancel: [] }>();
 const thumbnail = ref("");
 const menu = ref(false);
@@ -67,14 +67,16 @@ const pick = (action: string) => {
         class="play"
         aria-hidden="true"
       />
+      <span v-if="card.fileState === 'missing' || card.fileState === 'unavailable'" class="file-warning">{{ card.fileState === "missing" ? "文件不存在" : "文件不可用" }}</span>
       <Transition name="fade"><DownloadProgressOverlay :card="card" /></Transition>
     </button>
-    <button class="more" aria-label="下载操作" :aria-expanded="menu" @click="menu = !menu">
+    <button v-if="!hideMore" class="more" aria-label="下载操作" :aria-expanded="menu" @click="menu = !menu">
       <Ellipsis :size="16" />
     </button>
     <div v-if="menu" class="actions">
       <template v-if="card.status === 'done'">
-        <button @click="pick('file')">打开文件</button>
+        <button v-if="card.canRecycle" class="recycle" @click.stop="pick('recycle')">删除文件</button>
+        <button :disabled="card.fileState === 'missing' || card.fileState === 'unavailable'" @click="pick('file')">打开文件</button>
         <button @click="pick('folder')">打开目录</button>
         <button @click="pick('copy')">复制原链接</button>
       </template>
@@ -99,6 +101,8 @@ const pick = (action: string) => {
 </template>
 
 <style scoped>
+.recycle { color:var(--danger) !important; }
+.file-warning { position:absolute; bottom:5px; z-index:3; color:white; background:#202427bb; padding:3px 6px; border-radius:5px; font-size:12px; }
 .tile {
   position: relative;
   min-width: 0;

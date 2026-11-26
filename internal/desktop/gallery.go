@@ -28,6 +28,7 @@ import (
 )
 
 type DownloadRecord struct {
+	FileIdentity    string    `json:"fileIdentity,omitempty"`
 	DurationSeconds float64   `json:"durationSeconds,omitempty"`
 	Format          string    `json:"format,omitempty"`
 	ID              string    `json:"id"`
@@ -242,6 +243,11 @@ func (s *DesktopService) GalleryThumbnail(id string) (string, error) {
 }
 
 func (s *DesktopService) RemoveDownloadRecord(id string) error {
+	s.fileMu.Lock()
+	defer s.fileMu.Unlock()
+	return s.removeDownloadRecord(id)
+}
+func (s *DesktopService) removeDownloadRecord(id string) error {
 	s.historyMu.Lock()
 	defer s.historyMu.Unlock()
 	records, err := readHistory(s.historyDir)
@@ -285,10 +291,13 @@ func (s *DesktopService) OpenDownloadRecord(id, action string) error {
 			}
 		case "file", "folder":
 			path := r.FinalPath
+			if path == "" || !filepath.IsAbs(path) {
+				return errors.New("本地文件路径不可用")
+			}
 			if action == "folder" {
 				path = filepath.Dir(path)
 			}
-			if _, err := os.Stat(path); err != nil {
+			if info, err := os.Stat(path); err != nil || (action == "folder" && !info.IsDir()) || (action == "file" && !info.Mode().IsRegular()) {
 				return errors.New("本地文件或目录已移动或删除")
 			}
 			return mygo.Shell.OpenPath(path)

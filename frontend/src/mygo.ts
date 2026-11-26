@@ -19,6 +19,13 @@ export interface BiliQRSession {
   url: string;
 }
 
+export interface DownloadFileState {
+  id: string;
+  status: string;
+  canRecycle: boolean;
+  message: string;
+}
+
 export interface DownloadParams {
   Mode: string;
   AudioFormat: string;
@@ -35,6 +42,7 @@ export interface DownloadParams {
 }
 
 export interface DownloadRecord {
+  fileIdentity?: string;
   durationSeconds?: number;
   format?: string;
   id: string;
@@ -92,6 +100,12 @@ export interface ProgressInfo {
   finalPath: string;
 }
 
+export interface RecycleResult {
+  id: string;
+  status: string;
+  message: string;
+}
+
 export interface SafeAccount {
   siteId: string;
   accountId: string;
@@ -132,9 +146,11 @@ export const DesktopService = {
   generateBiliQRCode: bind<[], BiliQRSession>("DesktopService.GenerateBiliQRCode", () => []),
   getAccounts: bind<[], SafeAccount[]>("DesktopService.GetAccounts", () => []),
   getDefaultDownloadDirectory: bind<[], string>("DesktopService.GetDefaultDownloadDirectory", () => []),
+  getDownloadFileStates: bind<[string[]], DownloadFileState[]>("DesktopService.GetDownloadFileStates", (ids: string[]) => [ids]),
   openDownloadDirectory: bind<[string], void>("DesktopService.OpenDownloadDirectory", (path: string) => [path]),
   openDownloadRecord: bind<[string, string], void>("DesktopService.OpenDownloadRecord", (id: string, action: string) => [id, action]),
   pollBiliQRCode: bind<[string], PollResult>("DesktopService.PollBiliQRCode", (qrcodeKey: string) => [qrcodeKey]),
+  recycleDownloadFiles: bind<[string[]], RecycleResult[]>("DesktopService.RecycleDownloadFiles", (ids: string[]) => [ids]),
   removeDownloadRecord: bind<[string], void>("DesktopService.RemoveDownloadRecord", (id: string) => [id]),
   selectDownloadDirectory: bind<[string], string>("DesktopService.SelectDownloadDirectory", (current: string) => [current]),
   setWindow: bind<[Window | null], void>("DesktopService.SetWindow", (w: Window | null) => [w]),

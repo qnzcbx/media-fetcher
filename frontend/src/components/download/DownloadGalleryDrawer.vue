@@ -17,6 +17,7 @@ const emit = defineEmits<{
   cancel: [];
   close: [];
   removeSelected: [ids: string[]];
+  recycleSelected: [ids: string[]];
 }>();
 
 const filter = ref("");
@@ -46,6 +47,9 @@ watch(
   },
 );
 
+watch(() => props.cards.map(card => card.id), (ids) => {
+  for (const id of selectedIds.value) if (!ids.includes(id)) selectedIds.value.delete(id);
+});
 watch(filter, () => {
   exitSelectionMode();
 });
@@ -112,6 +116,7 @@ const handleRemove = () => {
           :class="{ selected: selectedIds.has(card.id) }"
         >
           <DownloadCard
+            hideMore
             :card="card"
             :busy="busy"
             @action="(item, action) => selectedCount === 0 && emit('action', item, action)"
@@ -138,6 +143,7 @@ const handleRemove = () => {
     </div>
 
     <GallerySelectionBar
+      @recycle="emit('recycleSelected', [...selectedIds])"
       v-if="selectedCount > 0"
       :count="selectedCount"
       :totalSelectable="totalSelectable"

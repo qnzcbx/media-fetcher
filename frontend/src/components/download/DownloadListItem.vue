@@ -151,7 +151,7 @@ const metadata = computed(() => {
         <span v-else-if="card.status === 'queued' || card.status === 'cancelling'">
           {{ card.status === "cancelling" ? "取消中..." : "排队中..." }}
         </span>
-        <span v-else>{{ metadata }}</span>
+        <span v-else>{{ card.fileState === "missing" ? "文件不存在" : card.fileState === "unavailable" ? "文件不可用" : metadata }}</span>
       </div>
     </div>
 
@@ -161,7 +161,8 @@ const metadata = computed(() => {
       </button>
       <div v-if="menu" class="dropdown-menu">
         <template v-if="card.status === 'done'">
-          <button @click.stop="pick('file')">打开文件</button>
+        <button v-if="card.canRecycle" class="recycle" @click.stop="pick('recycle')">删除文件</button>
+          <button :disabled="card.fileState === 'missing' || card.fileState === 'unavailable'" @click.stop="pick('file')">打开文件</button>
           <button @click.stop="pick('folder')">打开目录</button>
           <button @click.stop="pick('copy')">复制原链接</button>
         </template>
@@ -190,6 +191,8 @@ const metadata = computed(() => {
 </template>
 
 <style scoped>
+.recycle { color:var(--danger) !important; }
+.file-warning { position:absolute; bottom:5px; z-index:3; color:white; background:#202427bb; padding:3px 6px; border-radius:5px; font-size:12px; }
 .list-item {
   display: flex;
   align-items: center;

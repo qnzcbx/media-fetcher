@@ -1,11 +1,12 @@
 <script setup lang="ts">
+import { brands } from "../../assets/brands";
 import BrandIcon from "../icons/BrandIcon.vue";
 </script>
 
 <template>
   <div class="support-text">
-    <span class="brand-hover"><BrandIcon name="bilibili" variant="hover" /> Bilibili</span>
-    <span class="brand-hover"><BrandIcon name="lofter" variant="hover" /> LOFTER</span>
+    <span class="brand-hover" :style="{ '--brand-color': brands.bilibili.color }"><BrandIcon name="bilibili" /> Bilibili</span>
+    <span class="brand-hover" :style="{ '--brand-color': brands.lofter.color }"><BrandIcon name="lofter" /> LOFTER</span>
   </div>
 </template>
 
@@ -22,6 +23,7 @@ import BrandIcon from "../icons/BrandIcon.vue";
 .brand-hover {
   @apply inline-flex items-center;
   gap: 5px;
+  transition: color 160ms ease;
 }
-.brand-hover:hover :deep(.brand-icon--hover) { color: var(--brand-color); }
+.brand-hover:hover { color: var(--brand-color); }
 </style>
