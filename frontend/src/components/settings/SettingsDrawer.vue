@@ -50,9 +50,9 @@ const emit = defineEmits<{
 
       <section class="settings-section">
         <h3>下载偏好</h3>
-        <div class="format-row">
+        <div class="format-row media-parameter-row">
           <span>默认音频格式</span>
-          <div class="format-switch" role="group" aria-label="默认音频格式">
+          <div class="format-switch media-parameter-segments" role="group" aria-label="默认音频格式">
             <button
               v-for="format in AUDIO_FORMATS"
               :key="format"
@@ -133,20 +133,4 @@ const emit = defineEmits<{
   background: var(--border);
 }
 
-.format-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  font-size: 14px;
-  color: var(--text-main);
-}
-
-.format-switch {
-  display: inline-flex;
-  gap: 2px;
-  padding: 2px;
-  border-radius: 8px;
-  background: var(--input-bg);
-}
 </style>

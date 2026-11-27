@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { audioKey } from "../../utils/media";
+import { audioKey, sortAudioStreams } from "../../utils/media";
 import { computed } from "vue";
 import MediaQualityCard from "./MediaQualityCard.vue";
 import MediaQualityGrid from "./MediaQualityGrid.vue";
@@ -16,10 +16,8 @@ const emit = defineEmits<{
   (e: "select", id: number, key: string): void;
 }>();
 
-// 按真实带宽倒序展示，默认项由上层选择逻辑给出。
-const ordered = computed(() =>
-  [...(props.audioStreams ?? [])].sort((a, b) => b.bandwidth - a.bandwidth),
-);
+// 展示顺序与音质菜单保持一致，不影响默认选择。
+const ordered = computed(() => sortAudioStreams(props.audioStreams));
 </script>
 
 <template>

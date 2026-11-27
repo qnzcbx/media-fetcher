@@ -2,6 +2,7 @@ package bilibili
 
 import (
 	"encoding/json"
+	"math"
 	"net/url"
 	"strconv"
 	"strings"
@@ -66,7 +67,7 @@ func streamFPS(s rawStream) string {
 	}
 	for _, part := range parts {
 		n, e := strconv.ParseFloat(part, 64)
-		if e != nil || n <= 0 {
+		if e != nil || n <= 0 || math.IsNaN(n) || math.IsInf(n, 0) {
 			return ""
 		}
 	}

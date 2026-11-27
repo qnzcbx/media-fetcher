@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { ref, computed } from "vue";
-import { SelectRoot, SelectTrigger, SelectValue, SelectPortal, SelectContent, SelectViewport, SelectItem, SelectItemText } from "reka-ui";
-import { X, ChevronDown, LoaderCircle } from "@lucide/vue";
+import { ref, computed, watch } from "vue";
+import { PopoverRoot, PopoverTrigger, PopoverPortal, PopoverContent, PopoverClose, SelectRoot, SelectTrigger, SelectValue, SelectPortal, SelectContent, SelectViewport, SelectItem, SelectItemText } from "reka-ui";
+import { X, RotateCcw, SlidersHorizontal, ChevronUp, ChevronDown, LoaderCircle } from "@lucide/vue";
 import VideoQualityGrid from "./VideoQualityGrid.vue";
 import AudioQualityGrid from "./AudioQualityGrid.vue";
 import AudioSelector from "./AudioSelector.vue";
@@ -9,7 +9,7 @@ import AudioFormatSelector from "./AudioFormatSelector.vue";
 import DownloadModeSelector from "./DownloadModeSelector.vue";
 import ImageSelectionGrid from "./ImageSelectionGrid.vue";
 import type { Episode, ImageItem, MediaInfoResponse } from "../../mygo";
-import { codecLabel, audioKey } from "../../utils/media";
+import { codecLabel, audioKey, getBestAudioStream } from "../../utils/media";
 import type { UniqueVideoStream } from "../../utils/media";
 import type { AudioFormat } from "../../utils/preferences";
 
@@ -52,9 +52,18 @@ const emit = defineEmits<{
 }>();
 
 const mode = ref("complete");
+const advancedOpen = ref(false);
+watch(() => [mode.value, props.mediaInfo], () => advancedOpen.value = false);
+const resetDefaults = () => {
+ const video = codecs.value[0];
+ if (video) emit("update:selectedVideo", props.selectedVideoID, video.codec);
+ const audio = getBestAudioStream(props.mediaInfo.audioStreams ?? []);
+ if (audio) emit("update:selectedAudio", audio.id, audioKey(audio));
+};
 const format = ref<AudioFormat>(props.defaultAudioFormat ?? "m4a");
 
 const codecs = computed(() => props.uniqueVideoStreams.find(group => group.stream.id === props.selectedVideoID)?.streams ?? []);
+const isDefault = computed(() => { const audio = getBestAudioStream(props.mediaInfo.audioStreams ?? []); return props.selectedVideoCodec === codecs.value[0]?.codec && !!audio && props.selectedAudioKey === audioKey(audio); });
 const selectedAudio = computed(() => props.mediaInfo.audioStreams?.find(audio => audioKey(audio) === props.selectedAudioKey));
 const available = computed<DownloadMode[]>(() => [
   { id: "complete", label: "完整视频", enabled: props.selectedVideoID >= 0 && props.selectedAudioID >= 0 },
@@ -161,16 +170,27 @@ const startDownload = () => {
             />
           </div>
 
-          <div v-if="chosen?.id !== 'audio' && codecs.length" class="codec-options">
+          <div v-if="chosen?.id === 'video' && codecs.length" class="codec-options media-parameter-row">
             <span>视频编码</span>
-            <div class="codec-switch" role="group" aria-label="视频编码">
+            <div class="codec-switch media-parameter-segments" role="group" aria-label="视频编码">
               <button v-for="stream in codecs" :key="stream.codec" class="segmented-option" :aria-pressed="selectedVideoCodec === stream.codec"
                 @click="emit('update:selectedVideo', selectedVideoID, stream.codec)">{{ codecLabel(stream.codec) }}</button>
             </div>
           </div>
           <p v-if="chosen?.id === 'complete' && selectedAudio?.kind && selectedAudio.kind !== 'standard'" class="media-notice">高级音轨的 MP4 播放兼容性取决于播放器。</p>
           <p v-if="chosen?.id === 'audio' && format === 'm4a' && selectedAudio && !/^(mp4a|aac)/i.test(selectedAudio.codec)" class="media-notice">将重新编码为 AAC。</p>
-          <div v-if="chosen?.id === 'complete' && selectedAudioID >= 0" class="resource-options">
+          <PopoverRoot v-if="chosen?.id === 'complete'" v-model:open="advancedOpen">
+            <PopoverTrigger class="advanced-trigger"><span><SlidersHorizontal :size="16" />高级设置</span><span class="advanced-summary">{{ codecLabel(selectedVideoCodec) }} · {{ selectedAudio?.quality }}</span><ChevronUp v-if="advancedOpen" :size="16" /><ChevronDown v-else :size="16" /></PopoverTrigger>
+            <PopoverPortal><PopoverContent side="top" align="start" :sideOffset="8" :collisionPadding="12" class="advanced-panel">
+              <div class="advanced-heading"><strong>高级设置</strong><div class="advanced-actions"><button class="icon-btn" title="恢复默认" aria-label="恢复默认" :disabled="isDefault" @click="resetDefaults"><RotateCcw :size="18" /></button><PopoverClose class="icon-btn" title="关闭高级设置" aria-label="关闭高级设置"><X :size="18" /></PopoverClose></div></div>
+          <div v-if="codecs.length" class="codec-options media-parameter-row">
+            <span>视频编码</span>
+            <div class="codec-switch media-parameter-segments" role="group" aria-label="视频编码">
+              <button v-for="stream in codecs" :key="stream.codec" class="segmented-option" :aria-pressed="selectedVideoCodec === stream.codec"
+                @click="emit('update:selectedVideo', selectedVideoID, stream.codec)">{{ codecLabel(stream.codec) }}</button>
+            </div>
+          </div>
+          <div class="resource-options">
             <AudioSelector
               :audioStreams="mediaInfo.audioStreams"
               :modelValue="selectedAudioID"
@@ -178,7 +198,10 @@ const startDownload = () => {
               @update:modelValue="(val, key) => emit('update:selectedAudio', val, key)"
             />
           </div>
-          <div v-else-if="chosen?.id === 'audio'" class="resource-options">
+
+            </PopoverContent></PopoverPortal>
+          </PopoverRoot>
+          <div v-if="chosen?.id === 'audio'" class="resource-options">
             <AudioFormatSelector v-model="format" />
           </div>
         </template>
@@ -204,8 +227,16 @@ const startDownload = () => {
 </template>
 
 <style scoped>
-.codec-options { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-shrink: 0; min-height: 44px; padding: 0 16px; background: var(--input-bg); border-radius: 8px; }
-.codec-switch { display: flex; gap: 4px; }
+.advanced-trigger { display:flex; align-items:center; gap:12px; min-height:44px; flex-shrink:0; padding:0 16px; border:0; border-radius:8px; background:var(--input-bg); color:var(--text-main); font:inherit; cursor:pointer; }
+.advanced-trigger > span:first-child { display:flex; align-items:center; gap:8px; white-space:nowrap; }
+.advanced-summary { flex:1; text-align:right; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--text-assist); font-size:13px; }
+:global(.advanced-panel) { z-index:1100; box-sizing:border-box; width:var(--reka-popover-trigger-width); max-width:calc(100vw - 24px); max-height:var(--reka-popover-content-available-height); overflow:auto; padding:16px; display:flex; flex-direction:column; gap:12px; border:1px solid var(--border); border-radius:12px; background:var(--card-bg); color:var(--text-main); box-shadow:0 6px 20px var(--shadow-color); animation:advanced-in 140ms ease-out; }
+.advanced-heading { display:flex; justify-content:space-between; align-items:center; }
+.advanced-actions { display:flex; align-items:center; gap:4px; }
+.advanced-actions .icon-btn { width:30px; height:30px; padding:6px; justify-content:center; }
+.advanced-actions .icon-btn:hover:not(:disabled) { background:var(--input-bg); }
+.advanced-actions .icon-btn:disabled { opacity:.35; cursor:default; }
+@keyframes advanced-in { from { opacity:0; transform:translateY(4px); } to { opacity:1; transform:translateY(0); } }
 .media-notice { margin: 0; font-size: 12px; color: var(--text-assist); }
 .episode-title { margin: 0; font-size: 14px; color: var(--text-main); flex-shrink: 0; }
 .episode-selector { display: flex; align-items: center; gap: 12px; flex-shrink: 0; }

@@ -117,7 +117,7 @@ func PrepareSingleTrack(ctx context.Context, path, output, format string, stage 
 		return "", fmt.Errorf("%s 输出为空", format)
 	}
 	verified, verifyErr := ProbeMedia(ctx, output)
-	if verifyErr != nil || len(verified.Streams) != 1 || verified.Seconds() <= 0 {
+	if verifyErr != nil || len(verified.Streams) != 1 || verified.Seconds() <= 0 || !matchesOutput(verified, format, p.Streams[0].Codec) {
 		os.Remove(output)
 		return "", fmt.Errorf("输出验证失败")
 	}
@@ -140,4 +140,26 @@ func OriginalAudioFormat(ctx context.Context, path string) (string, error) {
 		return p.Streams[0].Codec, nil
 	}
 	return "", fmt.Errorf("不支持的原始音频编码: %s", p.Streams[0].Codec)
+}
+
+// matchesOutput 校验输出策略要求的实际类型、编码和容器。
+func matchesOutput(p MediaProbe, format, sourceCodec string) bool {
+	if len(p.Streams) != 1 {
+		return false
+	}
+	s := p.Streams[0]
+	if format == "mp4" {
+		return s.Type == "video" && s.Codec == sourceCodec && strings.Contains(p.Format.Name, "mp4")
+	}
+	if s.Type != "audio" {
+		return false
+	}
+	switch format {
+	case "m4a":
+		return s.Codec == "aac" && strings.Contains(p.Format.Name, "mp4")
+	case "opus":
+		return s.Codec == "opus" && p.Format.Name == "ogg"
+	default:
+		return s.Codec == format && p.Format.Name == format
+	}
 }

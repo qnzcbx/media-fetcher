@@ -9,9 +9,9 @@ const emit = defineEmits<{
 </script>
 
 <template>
-  <div class="format-options flex-between">
+  <div class="format-options media-parameter-row">
     <span class="format-label">输出格式</span>
-    <div class="format-switch" role="group" aria-label="输出格式">
+    <div class="format-switch media-parameter-segments" role="group" aria-label="输出格式">
       <button type="button" class="segmented-option" :aria-pressed="modelValue === 'original'" @click="emit('update:modelValue', 'original')">原始</button>
       <button
         type="button"
@@ -34,26 +34,3 @@ const emit = defineEmits<{
     </div>
   </div>
 </template>
-
-<style scoped>
-.format-options {
-  @apply min-h-[44px] px-4 rounded-lg;
-  gap: 12px;
-  background: var(--input-bg);
-  box-sizing: border-box;
-}
-
-.format-label {
-  font-size: 14px;
-  color: var(--text-main);
-}
-
-.format-switch {
-  @apply inline-flex gap-0.5 rounded-lg p-0.5;
-  background: var(--card-bg);
-}
-
-
-
-
-</style>

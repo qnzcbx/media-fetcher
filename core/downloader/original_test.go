@@ -3,6 +3,7 @@ package downloader
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"os/exec"
 	"path/filepath"
 	"testing"
@@ -75,5 +76,20 @@ func TestOriginalMediaOutputs(t *testing.T) {
 	}
 	if _, err := OriginalAudioFormat(t.Context(), filepath.Join(t.TempDir(), "missing")); err == nil {
 		t.Fatal("探测失败必须拒绝")
+	}
+}
+
+func TestOutputPolicyRejectsMismatches(t *testing.T) {
+	var p MediaProbe
+	p.Format.Name = "flac"
+	if matchesOutput(p, "m4a", "aac") {
+		t.Fatal("无轨道被接受")
+	}
+	json.Unmarshal([]byte(`{"format":{"format_name":"flac"},"streams":[{"codec_type":"audio","codec_name":"flac"}]}`), &p)
+	if matchesOutput(p, "m4a", "flac") || matchesOutput(p, "mp4", "flac") {
+		t.Fatal("错误容器被接受")
+	}
+	if !matchesOutput(p, "flac", "flac") {
+		t.Fatal("正确容器被拒绝")
 	}
 }

@@ -128,6 +128,18 @@ try {
   const { parsePreferences } = await vite.ssrLoadModule("/src/utils/preferences.ts");
   assert.equal(parsePreferences('{"defaultAudioFormat":"original"}').defaultAudioFormat,"original");
   assert.equal(parsePreferences('{"defaultAudioFormat":"m4a"}').defaultAudioFormat,"m4a");
+  const { sortAudioStreams, audioKey } = await vite.ssrLoadModule("/src/utils/media.ts");
+  const audioSamples = [
+    {id:1,codec:"mp4a",kind:"standard",bandwidth:132000},
+    {id:2,codec:"mp4a",kind:"standard",bandwidth:64000},
+    {id:3,codec:"mp4a",kind:"standard",bandwidth:192000},
+    {id:4,codec:"ec-3",kind:"dolby",bandwidth:500000},
+    {id:5,codec:"fLaC",kind:"hires",bandwidth:900000},
+  ];
+  assert.deepEqual(sortAudioStreams(audioSamples).map(a=>a.id), [5,4,3,1,2]);
+  assert.deepEqual(audioSamples.map(a=>a.id), [1,2,3,4,5]);
+  assert.equal(getBestAudioStream(audioSamples).id,3);
+  assert.notEqual(audioKey(audioSamples[3]),audioKey(audioSamples[4]));
   await vite.ssrLoadModule("/src/utils/test_runner.ts");
   console.log("凭证初始化、站点账号选择与解锁条件回归通过");
 } finally {

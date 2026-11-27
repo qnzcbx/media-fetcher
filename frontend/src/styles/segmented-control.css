@@ -24,3 +24,61 @@
   color: var(--selection-text);
   font-weight: 500;
 }
+
+/* 媒体参数共用同一行布局与底槽，按钮数量由真实选项决定。 */
+.media-parameter-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-shrink: 0;
+  min-height: 44px;
+  padding: 0 16px;
+  box-sizing: border-box;
+  border-radius: 8px;
+  background: var(--input-bg);
+  color: var(--text-main);
+  font-size: 14px;
+}
+
+.media-parameter-row > span {
+  flex-shrink: 0;
+}
+
+.media-parameter-segments {
+  display: inline-flex;
+  align-items: center;
+  margin-left: auto;
+  min-width: 0;
+  gap: 2px;
+  padding: 2px;
+  border-radius: 8px;
+  background: var(--card-bg);
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+
+.media-parameter-segments .segmented-option {
+  box-sizing: border-box;
+  flex-shrink: 0;
+  min-width: 60px;
+  min-height: 28px;
+  padding: 4px 12px;
+  line-height: 20px;
+  white-space: nowrap;
+}
+
+.media-parameter-segments .segmented-option:hover:not(:disabled):not([aria-pressed="true"]) {
+  background: var(--hover-bg);
+  color: var(--text-main);
+}
+
+.media-parameter-segments .segmented-option:disabled {
+  opacity: .45;
+  pointer-events: none;
+  cursor: default;
+}
+
+.media-parameter-segments .segmented-option:focus-visible {
+  outline-offset: -2px;
+}

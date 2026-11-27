@@ -32,3 +32,11 @@ func TestAdvancedDASH(t *testing.T) {
 		t.Fatal(webMediaCapabilities)
 	}
 }
+
+func TestFrameRateRejectsNonFinite(t *testing.T) {
+	for _, value := range []string{`"NaN"`, `"Inf"`, `"60/Inf"`, `"0"`, `"60/0"`} {
+		if streamFPS(rawStream{FPS: json.RawMessage(value)}) != "" {
+			t.Fatal(value)
+		}
+	}
+}

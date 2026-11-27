@@ -22,3 +22,9 @@ export const getBestAudioStream = (streams: AudioStream[]): AudioStream | undefi
 };
 
 export const audioKey = (audio: AudioStream) => `${audio.id}|${audio.codec}|${audio.kind ?? ""}`;
+
+// 仅用于展示分组；默认音轨仍由兼容性选择函数决定。
+export const sortAudioStreams = (streams: AudioStream[]): AudioStream[] => {
+  const order = (audio: AudioStream) => audio.kind === "hires" ? 0 : audio.kind === "dolby" ? 1 : 2;
+  return [...(streams ?? [])].sort((a, b) => order(a) - order(b) || b.bandwidth - a.bandwidth);
+};
