@@ -34,7 +34,7 @@ defineEmits<{
       :key="item.index"
       :cover="previewMap[coverUrl]"
       :label="item.stream.quality_label"
-      :selected="selectedVideoID === item.stream.id && selectedVideoCodec === item.stream.codec"
+      :selected="selectedVideoID === item.stream.id"
       @select="$emit('select', item.stream.id, item.stream.codec)"
     />
   </MediaQualityGrid>

@@ -260,6 +260,7 @@ func handleDownload(args []string) {
 	accountID := fs.String("account", "", "指定登录账号ID")
 	videoIdx := fs.Int("video", -1, "选择视频流序号")
 	audioIdx := fs.Int("audio", -1, "选择音频流序号")
+	audioFormat := fs.String("audio-format", "original", "音频输出 original/m4a/mp3")
 	audioOnly := fs.Bool("audio-only", false, "仅下载音频")
 	requireAuth := fs.Bool("require-auth", false, "必须使用登录账号")
 	_ = fs.Parse(args)
@@ -432,10 +433,7 @@ func handleDownload(args []string) {
 
 	if aIdx >= 0 && aIdx < len(media.AudioStreams) {
 		as := media.AudioStreams[aIdx]
-		ext := ".m4a"
-		if strings.Contains(as.Codec, "flac") {
-			ext = ".flac"
-		}
+		ext := ".source.tmp"
 		opts := downloader.DownloadOptions{
 			OutputDir: *outputDir,
 			Filename:  fmt.Sprintf("%s.audio%s", title, ext),
@@ -483,13 +481,50 @@ func handleDownload(args []string) {
 		}
 	} else if downloadedVideo != "" {
 		finalOut := filepath.Join(*outputDir, fmt.Sprintf("%s.mp4", title))
-		if err := fsutil.PublishFile(downloadedVideo, finalOut, fsutil.StrategyReplace); err != nil {
+		work, err := os.MkdirTemp(*outputDir, ".video-output-")
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			return
+		}
+		defer os.RemoveAll(work)
+		prepared, err := downloader.PrepareSingleTrack(ctx, downloadedVideo, filepath.Join(work, "output.mp4"), "mp4", func(stage string) { fmt.Println(stage) })
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			return
+		}
+		if err := fsutil.PublishFile(prepared, finalOut, fsutil.StrategyCreateNew); err != nil {
 			fmt.Fprintf(os.Stderr, "文件发布失败: %v\n", err)
 		} else {
 			fmt.Printf("下载完成: %s\n", finalOut)
 		}
 	} else if downloadedAudio != "" {
-		fmt.Printf("下载完成: %s\n", downloadedAudio)
+		format := *audioFormat
+		var err error
+		if format == "original" {
+			format, err = downloader.OriginalAudioFormat(ctx, downloadedAudio)
+		}
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			return
+		}
+		work, err := os.MkdirTemp(*outputDir, ".audio-output-")
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			return
+		}
+		defer os.RemoveAll(work)
+		staged, err := downloader.PrepareSingleTrack(ctx, downloadedAudio, filepath.Join(work, "output."+format), format, func(stage string) { fmt.Println(stage) })
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			return
+		}
+		final := filepath.Join(*outputDir, title+"."+format)
+		if err = fsutil.PublishFile(staged, final, fsutil.StrategyCreateNew); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			return
+		}
+		os.Remove(downloadedAudio)
+		fmt.Printf("下载完成: %s\n", final)
 	} else {
 		fmt.Println("未下载任何内容。")
 	}

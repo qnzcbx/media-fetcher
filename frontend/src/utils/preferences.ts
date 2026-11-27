@@ -1,7 +1,7 @@
 // 非敏感 UI 偏好的纯函数定义，供 localStorage 与单元测试共用。
 export type ThemePreference = "light" | "dark" | "system";
 export type ResolvedTheme = "light" | "dark";
-export type AudioFormat = "m4a" | "mp3";
+export type AudioFormat = "original" | "m4a" | "mp3";
 
 export type Preferences = {
   downloadDirectory: string;
@@ -18,7 +18,7 @@ export const DEFAULT_PREFERENCES: Preferences = {
 };
 
 const THEME_PREFERENCES: readonly ThemePreference[] = ["light", "dark", "system"];
-const AUDIO_FORMATS: readonly AudioFormat[] = ["m4a", "mp3"];
+const AUDIO_FORMATS: readonly AudioFormat[] = ["original", "m4a", "mp3"];
 
 const isThemePreference = (value: unknown): value is ThemePreference =>
   typeof value === "string" && THEME_PREFERENCES.includes(value as ThemePreference);

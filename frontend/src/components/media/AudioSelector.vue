@@ -1,13 +1,15 @@
 <script setup lang="ts">
+import { audioKey } from "../../utils/media";
 import type { AudioStream } from "../../mygo";
 
 defineProps<{
   audioStreams: AudioStream[];
   modelValue: number;
+  selectedAudioKey: string;
 }>();
 
 defineEmits<{
-  (e: "update:modelValue", val: number): void;
+  (e: "update:modelValue", val: number, key: string): void;
 }>();
 </script>
 
@@ -16,10 +18,10 @@ defineEmits<{
     <span>音质</span>
     <select
       class="audio-select"
-      :value="modelValue"
-      @change="$emit('update:modelValue', Number(($event.target as HTMLSelectElement).value))"
+      :value="selectedAudioKey"
+      @change="$emit('update:modelValue', Number(($event.target as HTMLSelectElement).value.split('|')[0]), ($event.target as HTMLSelectElement).value)"
     >
-      <option v-for="as in audioStreams" :key="as.id" :value="as.id">
+      <option v-for="as in audioStreams" :key="audioKey(as)" :value="audioKey(as)">
         {{ as.quality }}
       </option>
     </select>

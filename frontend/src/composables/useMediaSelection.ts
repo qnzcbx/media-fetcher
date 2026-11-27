@@ -1,11 +1,12 @@
 import { ref } from "vue";
 import type { ImageItem, MediaInfoResponse } from "../mygo";
-import { getUniqueVideoStreams, getBestAudioStreamId } from "../utils/media";
+import { audioKey, getUniqueVideoStreams, getBestAudioStream } from "../utils/media";
 
 export const useMediaSelection = () => {
   const selectedVideoID = ref(-1);
   const selectedVideoCodec = ref("");
   const selectedAudioID = ref(-1);
+ const selectedAudioKey = ref("");
   const selectedImages = ref<number[]>([]);
 
   // 初始化真实可用的默认选择：最高兼容画质、最高带宽音轨、全部图片。
@@ -13,6 +14,7 @@ export const useMediaSelection = () => {
     selectedVideoID.value = -1;
     selectedVideoCodec.value = "";
     selectedAudioID.value = -1;
+ selectedAudioKey.value = "";
     selectedImages.value = [];
 
     if (!mediaInfo) return;
@@ -24,7 +26,9 @@ export const useMediaSelection = () => {
     }
 
     if (mediaInfo.audioStreams && mediaInfo.audioStreams.length > 0) {
-      selectedAudioID.value = getBestAudioStreamId(mediaInfo.audioStreams);
+      const audio = getBestAudioStream(mediaInfo.audioStreams)!;
+ selectedAudioID.value = audio.id;
+ selectedAudioKey.value = audioKey(audio);
     }
 
     if (mediaInfo.images && mediaInfo.images.length > 0) {
@@ -53,6 +57,7 @@ export const useMediaSelection = () => {
     selectedVideoID,
     selectedVideoCodec,
     selectedAudioID,
+    selectedAudioKey,
     selectedImages,
     initSelection,
     toggleImage,

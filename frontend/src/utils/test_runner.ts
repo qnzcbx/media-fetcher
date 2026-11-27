@@ -1,5 +1,5 @@
 import { extractSupportedURL, getSiteIdFromURL } from "./url";
-import { getUniqueVideoStreams, getBestAudioStreamId } from "./media";
+import { getUniqueVideoStreams, getBestAudioStream } from "./media";
 
 console.log("Running utils tests...");
 let hasError = false;
@@ -43,7 +43,7 @@ for (const tc of testCases) {
 
 // Test Media grouping
 const mockVideoStreams: any[] = [
-  { id: 112, quality_label: "1080P", codec: "hev1", bandwidth: 2000 },
+  { id: 80, quality_label: "1080P", codec: "hev1", bandwidth: 2000 },
   { id: 80, quality_label: "1080P", codec: "avc1", bandwidth: 2500 },
   { id: 64, quality_label: "720P", codec: "avc1", bandwidth: 1000 },
 ];
@@ -63,7 +63,7 @@ const mockAudioStreams: any[] = [
   { id: 30216, quality: "64K", bandwidth: 64000 },
 ];
 
-const bestAudio = getBestAudioStreamId(mockAudioStreams);
+const bestAudio = getBestAudioStream(mockAudioStreams)?.id;
 if (bestAudio !== 30280) {
   console.error(`Best audio selection failed. Expected 30280, got ${bestAudio}`);
   hasError = true;

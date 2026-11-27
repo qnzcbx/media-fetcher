@@ -21,7 +21,7 @@ func TestRegisterOrUpdateAccount_PointerBug(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Fetch the saved account pointer
+	// 获取已保存账号的指针。
 	savedAcc, err := service.GetAccount("bilibili", "test_user")
 	if err != nil {
 		t.Fatal(err)
@@ -31,13 +31,13 @@ func TestRegisterOrUpdateAccount_PointerBug(t *testing.T) {
 		t.Fatalf("expected StatusActive, got %s", savedAcc.Status)
 	}
 
-	// Update the account using a NEW jar, but the SAME account pointer
+	// 使用新的 CookieJar 和同一个账号指针更新账号。
 	jar2 := cookiejar.New("bilibili", "test_user")
 	if err := service.RegisterOrUpdateAccount(savedAcc, jar2); err != nil {
 		t.Fatal(err)
 	}
 
-	// Verify the status
+	// 验证更新后的账号状态。
 	updatedAcc, err := service.GetAccount("bilibili", "test_user")
 	if err != nil {
 		t.Fatal(err)

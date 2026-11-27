@@ -5,6 +5,9 @@ import { bind, event } from "mygo-runtime";
 // ---- Types ----
 
 export interface AudioStream {
+  kind?: string;
+  mime_type?: string;
+  size?: number;
   id: number;
   quality: string;
   codec: string;
@@ -50,6 +53,7 @@ export interface DownloadParams {
   VideoID: number;
   VideoCodec: string;
   AudioID: number;
+  AudioKey: string;
   SelectedImage: number[];
 }
 
@@ -140,6 +144,10 @@ export interface SafeAccount {
 }
 
 export interface VideoStream {
+  frame_rate?: string;
+  dynamic_range?: string;
+  mime_type?: string;
+  size?: number;
   id: number;
   quality_label: string;
   width: number;

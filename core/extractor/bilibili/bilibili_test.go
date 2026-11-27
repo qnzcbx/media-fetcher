@@ -56,6 +56,9 @@ func TestBilibiliExtractor_AnonymousAndAuthorized(t *testing.T) {
 			})
 
 		case "/x/player/wbi/playurl":
+			if r.URL.Query().Get("fnval") != "4048" || r.URL.Query().Get("fourk") != "1" {
+				t.Error("高级 Web 能力参数丢失")
+			}
 			hasVIPCookie := false
 			for _, c := range r.Cookies() {
 				if c.Name == "SESSDATA" && c.Value == "vip_token_xyz" {

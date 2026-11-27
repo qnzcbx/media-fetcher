@@ -12,6 +12,7 @@ const emit = defineEmits<{
   <div class="format-options flex-between">
     <span class="format-label">输出格式</span>
     <div class="format-switch" role="group" aria-label="输出格式">
+      <button type="button" class="segmented-option" :aria-pressed="modelValue === 'original'" @click="emit('update:modelValue', 'original')">原始</button>
       <button
         type="button"
         class="segmented-option"

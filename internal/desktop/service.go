@@ -295,6 +295,7 @@ type DownloadParams struct {
 	VideoID       int
 	VideoCodec    string
 	AudioID       int
+	AudioKey      string
 	SelectedImage []int
 }
 
@@ -425,6 +426,12 @@ func (s *DesktopService) doDownload(ctx context.Context, params DownloadParams) 
 			CompletedAt: time.Now(), Status: "done", ResourceID: resourceID, Codec: params.VideoCodec,
 			FileSize: fileSize,
 		}
+		if kind == "audio" {
+			if probe, err := downloader.ProbeMedia(ctx, path); err == nil && len(probe.Streams) == 1 {
+				record.Codec = probe.Streams[0].Codec
+			}
+		}
+
 		if info, err := os.Stat(path); err == nil {
 			record.FileIdentity = fileIdentity(info)
 		}
@@ -582,9 +589,11 @@ func (s *DesktopService) doDownload(ctx context.Context, params DownloadParams) 
 
 	if params.AudioID >= 0 {
 		for _, as := range media.AudioStreams {
-			if as.ID == params.AudioID {
+			if as.ID == params.AudioID && (params.AudioKey == "" || params.AudioKey == strconv.Itoa(as.ID)+"|"+as.Codec+"|"+as.Kind) {
+				if targetAudio != nil {
+					return fmt.Errorf("音轨标识存在冲突，请重新解析")
+				}
 				targetAudio = &as
-				break
 			}
 		}
 		if targetAudio == nil {
@@ -667,6 +676,12 @@ func (s *DesktopService) doDownload(ctx context.Context, params DownloadParams) 
 		if input == "" {
 			input = downloadedAudio
 			format, kind, resourceID = "m4a", "audio", params.AudioID
+			if params.AudioFormat == "original" {
+				format, err = downloader.OriginalAudioFormat(ctx, input)
+				if err != nil {
+					return &outputFailure{err}
+				}
+			}
 			if params.AudioFormat == "mp3" {
 				format = "mp3"
 			}

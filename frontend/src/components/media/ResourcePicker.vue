@@ -9,6 +9,7 @@ import AudioFormatSelector from "./AudioFormatSelector.vue";
 import DownloadModeSelector from "./DownloadModeSelector.vue";
 import ImageSelectionGrid from "./ImageSelectionGrid.vue";
 import type { Episode, ImageItem, MediaInfoResponse } from "../../mygo";
+import { codecLabel, audioKey } from "../../utils/media";
 import type { UniqueVideoStream } from "../../utils/media";
 import type { AudioFormat } from "../../utils/preferences";
 
@@ -25,6 +26,7 @@ const props = defineProps<{
   selectedVideoID: number;
   selectedVideoCodec: string;
   selectedAudioID: number;
+  selectedAudioKey: string;
   selectedImages: number[];
 
   // 已按画质去重的视频流
@@ -43,7 +45,7 @@ const emit = defineEmits<{
   (e: "startDownload", mode: string, format: string): void;
 
   (e: "update:selectedVideo", id: number, codec: string): void;
-  (e: "update:selectedAudio", id: number): void;
+  (e: "update:selectedAudio", id: number, key: string): void;
   (e: "toggleImage", idx: number): void;
   (e: "toggleAllImages", totalImages: ImageItem[]): void;
   (e: "unlock"): void;
@@ -52,6 +54,8 @@ const emit = defineEmits<{
 const mode = ref("complete");
 const format = ref<AudioFormat>(props.defaultAudioFormat ?? "m4a");
 
+const codecs = computed(() => props.uniqueVideoStreams.find(group => group.stream.id === props.selectedVideoID)?.streams ?? []);
+const selectedAudio = computed(() => props.mediaInfo.audioStreams?.find(audio => audioKey(audio) === props.selectedAudioKey));
 const available = computed<DownloadMode[]>(() => [
   { id: "complete", label: "完整视频", enabled: props.selectedVideoID >= 0 && props.selectedAudioID >= 0 },
   { id: "audio", label: "仅音频", enabled: props.selectedAudioID >= 0 },
@@ -79,7 +83,7 @@ const downloadLabel = computed(() => {
   if (isImages.value) return "下载";
   switch (chosen.value?.id) {
     case "audio":
-      return format.value === "mp3" ? "下载 MP3" : "下载 M4A";
+      return format.value === "original" ? "下载原始音频" : format.value === "mp3" ? "下载 MP3" : "下载 M4A";
     default:
       return "下载 MP4";
   }
@@ -141,7 +145,8 @@ const startDownload = () => {
               :audioStreams="mediaInfo.audioStreams"
               :cover="cover"
               :selectedAudioID="selectedAudioID"
-              @select="(id) => emit('update:selectedAudio', id)"
+              :selectedAudioKey="selectedAudioKey"
+              @select="(id, key) => emit('update:selectedAudio', id, key)"
             />
             <VideoQualityGrid
               v-else
@@ -156,11 +161,21 @@ const startDownload = () => {
             />
           </div>
 
+          <div v-if="chosen?.id !== 'audio' && codecs.length" class="codec-options">
+            <span>视频编码</span>
+            <div class="codec-switch" role="group" aria-label="视频编码">
+              <button v-for="stream in codecs" :key="stream.codec" class="segmented-option" :aria-pressed="selectedVideoCodec === stream.codec"
+                @click="emit('update:selectedVideo', selectedVideoID, stream.codec)">{{ codecLabel(stream.codec) }}</button>
+            </div>
+          </div>
+          <p v-if="chosen?.id === 'complete' && selectedAudio?.kind && selectedAudio.kind !== 'standard'" class="media-notice">高级音轨的 MP4 播放兼容性取决于播放器。</p>
+          <p v-if="chosen?.id === 'audio' && format === 'm4a' && selectedAudio && !/^(mp4a|aac)/i.test(selectedAudio.codec)" class="media-notice">将重新编码为 AAC。</p>
           <div v-if="chosen?.id === 'complete' && selectedAudioID >= 0" class="resource-options">
             <AudioSelector
               :audioStreams="mediaInfo.audioStreams"
               :modelValue="selectedAudioID"
-              @update:modelValue="(val) => emit('update:selectedAudio', val)"
+              :selectedAudioKey="selectedAudioKey"
+              @update:modelValue="(val, key) => emit('update:selectedAudio', val, key)"
             />
           </div>
           <div v-else-if="chosen?.id === 'audio'" class="resource-options">
@@ -189,6 +204,9 @@ const startDownload = () => {
 </template>
 
 <style scoped>
+.codec-options { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-shrink: 0; min-height: 44px; padding: 0 16px; background: var(--input-bg); border-radius: 8px; }
+.codec-switch { display: flex; gap: 4px; }
+.media-notice { margin: 0; font-size: 12px; color: var(--text-assist); }
 .episode-title { margin: 0; font-size: 14px; color: var(--text-main); flex-shrink: 0; }
 .episode-selector { display: flex; align-items: center; gap: 12px; flex-shrink: 0; }
 .episode-trigger { display: flex; justify-content: space-between; align-items: center; cursor: pointer; flex: 1; min-width: 0; padding: 8px; border: 1px solid var(--border); border-radius: 8px; background: var(--input-bg); color: var(--text-main); font: inherit; }
@@ -226,7 +244,7 @@ const startDownload = () => {
 
 .resource-modal.is-pgc { height: min(780px, calc(100vh - 40px)); max-height: calc(100vh - 40px); }
 .is-pgc .rmodal-body { overflow-y: auto; }
-.is-pgc .resource-content { flex: 1 0 245px; overflow: visible; }
+.is-pgc .resource-content { flex: 1 0 185px; overflow: visible; }
 .episode-status { display: flex; justify-content: center; padding: 32px; }
 .episode-spinner { animation: episode-spin 1s linear infinite; }
 @keyframes episode-spin { to { transform: rotate(360deg); } }

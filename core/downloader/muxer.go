@@ -85,6 +85,8 @@ func MuxVideoAudio(ctx context.Context, ffmpegPath, videoPath, audioPath, output
 		"-y",            // 允许覆盖临时目标
 		"-i", videoPath, // 视频输入
 		"-i", audioPath, // 音频输入
+		"-map", "0:v:0", "-map", "1:a:0",
+		"-strict", "-2",
 		"-c", "copy", // 流式复制，无需重编码
 		"-movflags", "+faststart", // Web 流式快速启动优化
 		tmpMuxPath,

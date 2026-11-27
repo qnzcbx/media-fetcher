@@ -27,6 +27,9 @@ func TestPGCEpisodesAndSession(t *testing.T) {
 		case "/pgc/view/web/season":
 			fmt.Fprint(w, `{"code":0,"result":{"title":"季度","cover":"cover","episodes":[{"id":1,"cid":11,"title":"1","long_title":"开始","duration":1000}],"section":[{"episodes":[{"id":2,"cid":22,"title":"特别篇","long_title":"结束"}]}]}}`)
 		case "/pgc/player/web/v2/playurl":
+			if r.URL.Query().Get("fnval") != "4048" || r.URL.Query().Get("fourk") != "1" {
+				t.Error("高级 Web 能力参数丢失")
+			}
 			playCalls++
 			id := r.URL.Query().Get("ep_id")
 			cid := r.URL.Query().Get("cid")

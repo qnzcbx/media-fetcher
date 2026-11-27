@@ -5,7 +5,7 @@ import DownloadDirectorySetting from "./DownloadDirectorySetting.vue";
 import ThemeSelector from "./ThemeSelector.vue";
 import type { AudioFormat, ThemePreference } from "../../utils/preferences";
 
-const AUDIO_FORMATS: AudioFormat[] = ["m4a", "mp3"];
+const AUDIO_FORMATS: AudioFormat[] = ["original", "m4a", "mp3"];
 
 defineProps<{
   open: boolean;
@@ -61,7 +61,7 @@ const emit = defineEmits<{
               :aria-pressed="defaultAudioFormat === format"
               @click="emit('update:defaultAudioFormat', format)"
             >
-              {{ format.toUpperCase() }}
+              {{ format === "original" ? "原始" : format.toUpperCase() }}
             </button>
           </div>
         </div>

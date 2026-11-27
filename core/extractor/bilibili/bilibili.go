@@ -26,17 +26,29 @@ var (
 )
 
 type rawStream struct {
-	ID        int      `json:"id"`
-	Width     int      `json:"width"`
-	Height    int      `json:"height"`
-	Codecs    string   `json:"codecs"`
-	Bandwidth int64    `json:"bandwidth"`
-	BaseURL   string   `json:"baseUrl"`
-	BaseURL2  string   `json:"base_url"`
-	BackupURL []string `json:"backupUrl"`
+	MIME      string          `json:"mimeType"`
+	MIME2     string          `json:"mime_type"`
+	FPS       json.RawMessage `json:"frameRate"`
+	FPS2      json.RawMessage `json:"frame_rate"`
+	Size      int64           `json:"size"`
+	Backup2   []string        `json:"backup_url"`
+	ID        int             `json:"id"`
+	Width     int             `json:"width"`
+	Height    int             `json:"height"`
+	Codecs    string          `json:"codecs"`
+	Bandwidth int64           `json:"bandwidth"`
+	BaseURL   string          `json:"baseUrl"`
+	BaseURL2  string          `json:"base_url"`
+	BackupURL []string        `json:"backupUrl"`
 }
 
 type rawDash struct {
+	Dolby struct {
+		Audio []rawStream `json:"audio"`
+	} `json:"dolby"`
+	FLAC struct {
+		Audio *rawStream `json:"audio"`
+	} `json:"flac"`
 	Video []rawStream `json:"video"`
 	Audio []rawStream `json:"audio"`
 }
@@ -45,8 +57,9 @@ type rawPlayInfo struct {
 	Code    int    `json:"code"`
 	Message string `json:"message"`
 	Data    struct {
-		Dash rawDash           `json:"dash"`
-		Durl []json.RawMessage `json:"durl"`
+		Dash    rawDash           `json:"dash"`
+		Formats []supportFormat   `json:"support_formats"`
+		Durl    []json.RawMessage `json:"durl"`
 	} `json:"data"`
 }
 
@@ -232,43 +245,8 @@ func (e *BilibiliExtractor) Extract(ctx context.Context, rawURL string, opt extr
 		SourceURL:     target.TargetURL,
 	}
 
-	appendDASH(media, playInfo.Data.Dash)
+	appendDASH(media, playInfo.Data.Dash, playInfo.Data.Formats)
 	return media, nil
-}
-
-func appendDASH(media *extractor.MediaInfo, dash rawDash) {
-	for _, v := range dash.Video {
-		u := v.BaseURL
-		if u == "" {
-			u = v.BaseURL2
-		}
-		media.VideoStreams = append(media.VideoStreams, extractor.VideoStream{
-			ID:           v.ID,
-			QualityLabel: qualityName(v.ID),
-			Width:        v.Width,
-			Height:       v.Height,
-			Codec:        v.Codecs,
-			Bandwidth:    v.Bandwidth,
-			URL:          u,
-			BackupURLs:   v.BackupURL,
-			NeedAuth:     v.ID > 64, // 1080P 及以上需要登录或大会员
-		})
-	}
-
-	for _, a := range dash.Audio {
-		u := a.BaseURL
-		if u == "" {
-			u = a.BaseURL2
-		}
-		media.AudioStreams = append(media.AudioStreams, extractor.AudioStream{
-			ID:         a.ID,
-			Quality:    audioQualityName(a.ID),
-			Codec:      a.Codecs,
-			Bandwidth:  a.Bandwidth,
-			URL:        u,
-			BackupURLs: a.BackupURL,
-		})
-	}
 }
 
 func (e *BilibiliExtractor) fetchWbiPlayInfo(ctx context.Context, client *http.Client, bvid string, cid int64, referer string) (*rawPlayInfo, error) {
@@ -298,11 +276,12 @@ func (e *BilibiliExtractor) fetchWbiPlayInfo(ctx context.Context, client *http.C
 		return nil, fmt.Errorf("%w: mixin WBI key: %v", extractor.ErrAPIDenied, err)
 	}
 
-	// 2. 构造 WBI 签名的 playurl 请求（fnval=16 请求 DASH 格式）
+	// 2. 构造 WBI 签名的 playurl 请求（DASH 及高级媒体能力）
 	q := url.Values{
 		"bvid":  {bvid},
 		"cid":   {strconv.FormatInt(cid, 10)},
-		"fnval": {"16"},
+		"fnval": {strconv.Itoa(webMediaCapabilities)},
+		"fourk": {"1"},
 		"fnver": {"0"},
 	}
 	signedQuery := SignQuery(q, mixinKey, time.Now())
@@ -331,6 +310,14 @@ func qualityName(id int) string {
 	switch id {
 	case 127:
 		return "8K 超高清"
+	case 126:
+		return "杜比视界"
+	case 125:
+		return "HDR"
+	case 112:
+		return "1080P 高码率"
+	case 74:
+		return "720P 60帧"
 	case 120:
 		return "4K 超清"
 	case 116:

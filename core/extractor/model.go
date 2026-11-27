@@ -13,6 +13,10 @@ const (
 
 // VideoStream 描述单个可下载的视频流轨道信息。
 type VideoStream struct {
+	FrameRate    string   `json:"frame_rate,omitempty"`
+	DynamicRange string   `json:"dynamic_range,omitempty"`
+	MIMEType     string   `json:"mime_type,omitempty"`
+	Size         int64    `json:"size,omitempty"`
 	ID           int      `json:"id"`            // 画质代码（例如 116, 80, 64, 32, 16）
 	QualityLabel string   `json:"quality_label"` // 可读画质标签（例如 "1080P60", "1080P", "720P", "480P"）
 	Width        int      `json:"width"`
@@ -26,6 +30,9 @@ type VideoStream struct {
 
 // AudioStream 描述单个可下载的音频流轨道信息。
 type AudioStream struct {
+	Kind       string   `json:"kind,omitempty"`
+	MIMEType   string   `json:"mime_type,omitempty"`
+	Size       int64    `json:"size,omitempty"`
 	ID         int      `json:"id"` // 音质代码（例如 30280 (192K), 30232 (132K), 30216 (64K)）
 	Quality    string   `json:"quality"`
 	Codec      string   `json:"codec"`

@@ -119,6 +119,15 @@ try {
   assert.equal(parser.mediaInfo.value, anonymous);
   assert.equal(parser.parseError.value, "");
 
+  const { getUniqueVideoStreams, getBestAudioStream } = await vite.ssrLoadModule("/src/utils/media.ts");
+  const group = getUniqueVideoStreams(["av01", "hev1", "avc1"].map(codec=>({id:80,codec,bandwidth:100,quality_label:"1080P"})));
+  assert.equal(group.length,1);
+  assert.equal(group[0].streams.length,3);
+  assert.equal(group[0].stream.codec,"avc1");
+  assert.equal(getBestAudioStream([{id:1,codec:"fLaC",bandwidth:999999},{id:2,codec:"mp4a",bandwidth:192000}])?.id,2);
+  const { parsePreferences } = await vite.ssrLoadModule("/src/utils/preferences.ts");
+  assert.equal(parsePreferences('{"defaultAudioFormat":"original"}').defaultAudioFormat,"original");
+  assert.equal(parsePreferences('{"defaultAudioFormat":"m4a"}').defaultAudioFormat,"m4a");
   await vite.ssrLoadModule("/src/utils/test_runner.ts");
   console.log("凭证初始化、站点账号选择与解锁条件回归通过");
 } finally {

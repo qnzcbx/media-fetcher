@@ -20,7 +20,7 @@ Media Fetcher 是基于 Go Core、MyGo 和 Vue 3 的桌面媒体解析与下载�
 | Bilibili | BV 视频链接、分 P、番剧 EP 单集与 SS 剧集选择、匿名解析和本地扫码授权。画质及音轨以实际响应为准。 |
 | LOFTER | 匿名解析公开图片与图文帖子，支持图片多选下载。 |
 
-Bilibili 短链请先展开为完整视频链接。番剧 EP 直接选择资源，SS 需先选择单集；沿用现有 MP4 / M4A / MP3 下载流程，仅支持账号实际可访问的 DASH 资源，不支持 DRM、试看下载或批量下载。
+Bilibili 短链请先展开为完整视频链接。番剧 EP 直接选择资源，SS 需先选择单集；沿用现有 MP4 / M4A / MP3 下载流程，支持实际返回的 AVC / HEVC / AV1、HDR / 杜比视界及普通 AAC、Hi-Res / Dolby 音轨；仅支持账号实际可访问的 DASH 资源，不支持 DRM、试看下载或批量下载。
 
 ## Getting Started
 
@@ -96,3 +96,5 @@ Bilibili 与 LOFTER 线性图标来自 Arcticons，按 CC BY-SA 4.0 授权。详
 图库中的「移除记录」保留媒体文件。「删除文件」经确认后将可核验的本地文件移至 Windows 回收站，并清理对应记录。缺少身份或身份不一致的文件可仅移除记录。
 
 图库统一使用「删除」确认入口。默认勾选的本地文件操作会移至回收站，取消勾选仅清理记录。回收前后端会重新核对文件身份及安全资格。
+
+音频输出支持“原始 / M4A / MP3”。原始模式通过 ffprobe 确认实际编码，必要时 Stream Copy 重新封装（AAC→M4A、FLAC→FLAC、E-AC-3/AC-3/Opus/MP3→对应格式），不提升音质、不二次有损编码。非 AAC 转 M4A 会重新编码；高级音轨封装 MP4 的播放兼容性取决于播放器。CLI 可使用 `-audio-only -audio-format original|m4a|mp3`。

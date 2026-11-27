@@ -27,7 +27,7 @@ func validateDownload(p DownloadParams) error {
 			return nil
 		}
 	case "audio":
-		if p.VideoID == -1 && p.AudioID >= 0 && (p.AudioFormat == "m4a" || p.AudioFormat == "mp3") && len(p.SelectedImage) == 0 {
+		if p.VideoID == -1 && p.AudioID >= 0 && (p.AudioFormat == "original" || p.AudioFormat == "m4a" || p.AudioFormat == "mp3") && len(p.SelectedImage) == 0 {
 			return nil
 		}
 	}

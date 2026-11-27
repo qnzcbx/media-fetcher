@@ -112,7 +112,7 @@ func (e *BilibiliExtractor) extractPGC(ctx context.Context, client *http.Client,
 	if selected.Cover != "" {
 		media.CoverURL = selected.Cover
 	}
-	q := url.Values{"ep_id": {id}, "cid": {strconv.FormatInt(selected.CID, 10)}, "fnval": {"16"}, "fnver": {"0"}}
+	q := url.Values{"ep_id": {id}, "cid": {strconv.FormatInt(selected.CID, 10)}, "fnval": {strconv.Itoa(webMediaCapabilities)}, "fourk": {"1"}, "fnver": {"0"}}
 	body, err = httpGet(ctx, client, strings.TrimRight(e.apiBase, "/")+"/pgc/player/web/v2/playurl?"+q.Encode(), media.SourceURL)
 	if err != nil {
 		return nil, fmt.Errorf("%w: 获取番剧播放资源: %v", extractor.ErrNetworkFailed, err)
@@ -122,12 +122,13 @@ func (e *BilibiliExtractor) extractPGC(ctx context.Context, client *http.Client,
 		Message string `json:"message"`
 		Result  struct {
 			VideoInfo struct {
-				Dash        rawDash `json:"dash"`
-				Code        int     `json:"code"`
-				Message     string  `json:"message"`
-				IsPreview   int     `json:"is_preview"`
-				IsDRM       bool    `json:"is_drm"`
-				DRMTechType int     `json:"drm_tech_type"`
+				Dash        rawDash         `json:"dash"`
+				Formats     []supportFormat `json:"support_formats"`
+				Code        int             `json:"code"`
+				Message     string          `json:"message"`
+				IsPreview   int             `json:"is_preview"`
+				IsDRM       bool            `json:"is_drm"`
+				DRMTechType int             `json:"drm_tech_type"`
 			} `json:"video_info"`
 			PlayCheck struct {
 				PlayDetail string `json:"play_detail"`
@@ -159,7 +160,7 @@ func (e *BilibiliExtractor) extractPGC(ctx context.Context, client *http.Client,
 	if len(v.Dash.Video) == 0 {
 		return nil, fmt.Errorf("%w: 当前未返回支持的 DASH 视频资源", extractor.ErrUnsupportedMedia)
 	}
-	appendDASH(media, v.Dash)
+	appendDASH(media, v.Dash, v.Formats)
 	return media, nil
 }
 

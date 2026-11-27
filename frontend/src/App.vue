@@ -44,6 +44,7 @@ const {
   selectedVideoID,
   selectedVideoCodec,
   selectedAudioID,
+  selectedAudioKey,
   selectedImages,
   initSelection,
   toggleImage,
@@ -179,6 +180,7 @@ const handleStartDownload = async (mode: string, format: string) => {
     OutputDir: preferences.value.downloadDirectory,
     VideoID: mode === "images" || mode === "audio" ? -1 : selectedVideoID.value,
     VideoCodec: mode === "images" || mode === "audio" ? "" : selectedVideoCodec.value,
+    AudioKey: mode === "audio" || mode === "complete" ? selectedAudioKey.value : "",
     AudioID: mode === "images" || mode === "video" ? -1 : selectedAudioID.value,
     SelectedImage: media.images?.length ? selectedImages.value : [],
   };
@@ -208,7 +210,9 @@ const handleUnlock = () => {
     if (res) {
       applyResult(original.url, res);
       if (res.audioStreams?.some((audio) => audio.id === oldAudioId)) {
-        selectedAudioID.value = oldAudioId;
+        const audio = res.audioStreams.find(audio => audio.id === oldAudioId)!;
+        selectedAudioID.value = audio.id;
+        selectedAudioKey.value = `${audio.id}|${audio.codec}|${audio.kind ?? ""}`;
       }
     }
   });
@@ -307,6 +311,7 @@ const handleUnlock = () => {
       :selectedVideoID="selectedVideoID"
       :selectedVideoCodec="selectedVideoCodec"
       :selectedAudioID="selectedAudioID"
+      :selectedAudioKey="selectedAudioKey"
       :selectedImages="selectedImages"
       :uniqueVideoStreams="uniqueVideoStreams"
       :showUnlockCard="showUnlockCard"
@@ -315,11 +320,12 @@ const handleUnlock = () => {
       @startDownload="handleStartDownload"
       @update:selectedVideo="
         (id, codec) => {
+          const previousID = selectedVideoID;
           selectedVideoID = id;
-          selectedVideoCodec = codec;
+          selectedVideoCodec = previousID === id ? codec : uniqueVideoStreams.find(group => group.stream.id === id)?.streams.find(stream => stream.codec === selectedVideoCodec)?.codec || codec;
         }
       "
-      @update:selectedAudio="(id) => (selectedAudioID = id)"
+      @update:selectedAudio="(id, key) => { selectedAudioID = id; selectedAudioKey = key; }"
       @toggleImage="toggleImage"
       @toggleAllImages="toggleAllImages"
       @unlock="handleUnlock"
