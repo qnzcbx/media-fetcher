@@ -103,7 +103,12 @@ func appendDASH(media *extractor.MediaInfo, dash rawDash, formats []supportForma
 		if v.ID == 126 {
 			dynamic = "Dolby Vision"
 		}
-		media.VideoStreams = append(media.VideoStreams, extractor.VideoStream{ID: v.ID, QualityLabel: label, Width: v.Width, Height: v.Height, Codec: v.Codecs, Bandwidth: v.Bandwidth, URL: u, BackupURLs: streamBackups(v), MIMEType: streamMIME(v), FrameRate: streamFPS(v), DynamicRange: dynamic, Size: v.Size})
+		media.VideoStreams = append(media.VideoStreams, extractor.VideoStream{
+			ID: v.ID, QualityLabel: label, Width: v.Width, Height: v.Height, Codec: v.Codecs,
+			Bandwidth: v.Bandwidth, URL: u, BackupURLs: streamBackups(v), MIMEType: streamMIME(v),
+			FrameRate: streamFPS(v), DynamicRange: dynamic, Size: v.Size,
+			Headers: map[string]string{"Referer": "https://www.bilibili.com"},
+		})
 	}
 	appendAudio := func(streams []rawStream, kind string) {
 		for _, a := range streams {
@@ -124,7 +129,12 @@ func appendDASH(media *extractor.MediaInfo, dash rawDash, formats []supportForma
 			if kind == "dolby" {
 				label = "杜比音频"
 			}
-			media.AudioStreams = append(media.AudioStreams, extractor.AudioStream{ID: a.ID, Codec: a.Codecs, Kind: kind, Quality: label, Bandwidth: a.Bandwidth, URL: u, BackupURLs: streamBackups(a), MIMEType: streamMIME(a), Size: a.Size})
+			media.AudioStreams = append(media.AudioStreams, extractor.AudioStream{
+				ID: a.ID, Codec: a.Codecs, Kind: kind, Quality: label,
+				Bandwidth: a.Bandwidth, URL: u, BackupURLs: streamBackups(a),
+				MIMEType: streamMIME(a), Size: a.Size,
+				Headers: map[string]string{"Referer": "https://www.bilibili.com"},
+			})
 		}
 	}
 	appendAudio(dash.Audio, "standard")

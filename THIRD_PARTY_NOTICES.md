@@ -6,6 +6,7 @@
 | --- | --- | --- | --- |
 | arcticons:bilibili | Donnnno 与 Arcticons 贡献者 | [Iconify 条目](https://icon-sets.iconify.design/arcticons/bilibili/) | 转为结构化 SVG 数据，默认描边调整为 2.5，增加可选蓝色 |
 | arcticons:lofter | Donnnno 与 Arcticons 贡献者 | [Iconify 条目](https://icon-sets.iconify.design/arcticons/lofter/) | 转为结构化 SVG 数据，默认描边调整为 3.0，增加可选绿色 |
+| arcticons:youtube | Donnnno 与 Arcticons 贡献者 | [Iconify 条目](https://icon-sets.iconify.design/arcticons/youtube/) | 转为结构化 SVG 数据，默认描边调整为 2.5，增加可选红色 |
 
 素材来自 [Arcticons](https://github.com/Arcticons-Team/Arcticons)，按 [Iconify 集合数据](https://github.com/iconify/icon-sets/blob/master/json/arcticons.json) 于 2026-11-25 收录，使用集合中公布的署名。原始路径和 48 × 48 坐标系保持不变。
 

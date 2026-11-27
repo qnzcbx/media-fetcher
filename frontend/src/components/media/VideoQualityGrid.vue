@@ -8,12 +8,13 @@ defineProps<{
   previewMap: Record<string, string>;
   coverUrl: string;
   selectedVideoID: number;
+  selectedVideoGroupKey?: string;
   selectedVideoCodec: string;
   showUnlockCard?: boolean;
 }>();
 
 defineEmits<{
-  (e: "select", id: number, codec: string): void;
+  (e: "select", id: number, codec: string, groupKey: string, streamKey: string): void;
   (e: "unlock"): void;
 }>();
 </script>
@@ -31,11 +32,11 @@ defineEmits<{
 
     <MediaQualityCard
       v-for="item in videoStreams"
-      :key="item.index"
+      :key="item.groupKey"
       :cover="previewMap[coverUrl]"
       :label="item.stream.quality_label"
-      :selected="selectedVideoID === item.stream.id"
-      @select="$emit('select', item.stream.id, item.stream.codec)"
+      :selected="selectedVideoGroupKey ? selectedVideoGroupKey === item.groupKey : selectedVideoID === item.stream.id"
+      @select="$emit('select', item.stream.id, item.stream.codec, item.groupKey, item.stream.stream_key ?? '')"
     />
   </MediaQualityGrid>
 </template>

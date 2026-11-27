@@ -13,21 +13,23 @@ import (
 )
 
 func validateDownload(p DownloadParams) error {
+	hasVideo := p.VideoID >= 0 || p.VideoKey != ""
+	hasAudio := p.AudioID >= 0 || p.AudioKey != ""
 	switch p.Mode {
 	case "images":
-		if len(p.SelectedImage) > 0 && p.AudioID == -1 && p.VideoID == -1 && p.AudioFormat == "" {
+		if len(p.SelectedImage) > 0 && !hasAudio && !hasVideo && p.AudioFormat == "" {
 			return nil
 		}
 	case "complete":
-		if p.VideoID >= 0 && p.AudioID >= 0 && p.AudioFormat == "" && len(p.SelectedImage) == 0 {
+		if hasVideo && hasAudio && p.AudioFormat == "" && len(p.SelectedImage) == 0 {
 			return nil
 		}
 	case "video":
-		if p.VideoID >= 0 && p.AudioID == -1 && p.AudioFormat == "" && len(p.SelectedImage) == 0 {
+		if hasVideo && !hasAudio && p.AudioFormat == "" && len(p.SelectedImage) == 0 {
 			return nil
 		}
 	case "audio":
-		if p.VideoID == -1 && p.AudioID >= 0 && (p.AudioFormat == "original" || p.AudioFormat == "m4a" || p.AudioFormat == "mp3") && len(p.SelectedImage) == 0 {
+		if !hasVideo && hasAudio && (p.AudioFormat == "original" || p.AudioFormat == "m4a" || p.AudioFormat == "mp3") && len(p.SelectedImage) == 0 {
 			return nil
 		}
 	}

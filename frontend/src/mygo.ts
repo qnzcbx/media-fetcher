@@ -9,6 +9,10 @@ export interface AudioStream {
   mime_type?: string;
   size?: number;
   id: number;
+  stream_key?: string;
+  container?: string;
+  headers?: Record<string, string>;
+  chunk_size?: number;
   quality: string;
   codec: string;
   bandwidth: number;
@@ -52,6 +56,7 @@ export interface DownloadParams {
   OutputDir: string;
   VideoID: number;
   VideoCodec: string;
+  VideoKey: string;
   AudioID: number;
   AudioKey: string;
   SelectedImage: number[];
@@ -149,6 +154,11 @@ export interface VideoStream {
   mime_type?: string;
   size?: number;
   id: number;
+  quality_group_key?: string;
+  stream_key?: string;
+  container?: string;
+  headers?: Record<string, string>;
+  chunk_size?: number;
   quality_label: string;
   width: number;
   height: number;

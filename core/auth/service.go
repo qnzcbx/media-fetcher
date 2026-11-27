@@ -60,6 +60,12 @@ func isHostTrustedForSite(siteID, host string) bool {
 				return true
 			}
 		}
+	case "youtube":
+		for _, d := range []string{"youtube.com", "youtu.be", "googlevideo.com", "ytimg.com", "ggpht.com"} {
+			if host == d || strings.HasSuffix(host, "."+d) {
+				return true
+			}
+		}
 	default:
 		return false
 	}

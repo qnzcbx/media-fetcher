@@ -9,7 +9,7 @@ import AudioFormatSelector from "./AudioFormatSelector.vue";
 import DownloadModeSelector from "./DownloadModeSelector.vue";
 import ImageSelectionGrid from "./ImageSelectionGrid.vue";
 import type { Episode, ImageItem, MediaInfoResponse } from "../../mygo";
-import { codecLabel, audioKey, getBestAudioStream } from "../../utils/media";
+import { codecLabel, audioKey, getBestAudioStream, resolveVideoContainer, videoStreamKey } from "../../utils/media";
 import type { UniqueVideoStream } from "../../utils/media";
 import type { AudioFormat } from "../../utils/preferences";
 
@@ -25,6 +25,8 @@ const props = defineProps<{
   // 选择状态
   selectedVideoID: number;
   selectedVideoCodec: string;
+  selectedVideoGroupKey?: string;
+  selectedVideoKey?: string;
   selectedAudioID: number;
   selectedAudioKey: string;
   selectedImages: number[];
@@ -44,7 +46,7 @@ const emit = defineEmits<{
   (e: "selectEpisode", url: string): void;
   (e: "startDownload", mode: string, format: string): void;
 
-  (e: "update:selectedVideo", id: number, codec: string): void;
+  (e: "update:selectedVideo", id: number, codec: string, groupKey: string, streamKey: string): void;
   (e: "update:selectedAudio", id: number, key: string): void;
   (e: "toggleImage", idx: number): void;
   (e: "toggleAllImages", totalImages: ImageItem[]): void;
@@ -55,20 +57,32 @@ const mode = ref("complete");
 const advancedOpen = ref(false);
 watch(() => [mode.value, props.mediaInfo], () => advancedOpen.value = false);
 const resetDefaults = () => {
- const video = codecs.value[0];
- if (video) emit("update:selectedVideo", props.selectedVideoID, video.codec);
- const audio = getBestAudioStream(props.mediaInfo.audioStreams ?? []);
- if (audio) emit("update:selectedAudio", audio.id, audioKey(audio));
+  const group = currentGroup.value;
+  const video = codecs.value[0];
+  if (video && group) emit("update:selectedVideo", video.id, video.codec, group.groupKey, video.stream_key ?? "");
+  const audio = getBestAudioStream(props.mediaInfo.audioStreams ?? []);
+  if (audio) emit("update:selectedAudio", audio.id, audioKey(audio));
 };
 const format = ref<AudioFormat>(props.defaultAudioFormat ?? "m4a");
 
-const codecs = computed(() => props.uniqueVideoStreams.find(group => group.stream.id === props.selectedVideoID)?.streams ?? []);
-const isDefault = computed(() => { const audio = getBestAudioStream(props.mediaInfo.audioStreams ?? []); return props.selectedVideoCodec === codecs.value[0]?.codec && !!audio && props.selectedAudioKey === audioKey(audio); });
-const selectedAudio = computed(() => props.mediaInfo.audioStreams?.find(audio => audioKey(audio) === props.selectedAudioKey));
+const currentGroup = computed(() =>
+  props.uniqueVideoStreams.find((group) =>
+    props.selectedVideoGroupKey ? group.groupKey === props.selectedVideoGroupKey : group.stream.id === props.selectedVideoID,
+  ),
+);
+const codecs = computed(() => currentGroup.value?.streams ?? []);
+const isVideoSelected = (stream: UniqueVideoStream["stream"]) =>
+  props.selectedVideoKey ? stream.stream_key === props.selectedVideoKey : props.selectedVideoCodec === stream.codec;
+const isDefault = computed(() => {
+  const audio = getBestAudioStream(props.mediaInfo.audioStreams ?? []);
+  const firstVideo = codecs.value[0];
+  return !!firstVideo && isVideoSelected(firstVideo) && !!audio && props.selectedAudioKey === audioKey(audio);
+});
+const selectedAudio = computed(() => props.mediaInfo.audioStreams?.find((audio) => audioKey(audio) === props.selectedAudioKey));
 const available = computed<DownloadMode[]>(() => [
-  { id: "complete", label: "完整视频", enabled: props.selectedVideoID >= 0 && props.selectedAudioID >= 0 },
-  { id: "audio", label: "仅音频", enabled: props.selectedAudioID >= 0 },
-  { id: "video", label: "仅视频", enabled: props.selectedVideoID >= 0 },
+  { id: "complete", label: "完整视频", enabled: (props.selectedVideoID >= 0 || !!props.selectedVideoKey) && (props.selectedAudioID >= 0 || !!props.selectedAudioKey) },
+  { id: "audio", label: "仅音频", enabled: props.selectedAudioID >= 0 || !!props.selectedAudioKey },
+  { id: "video", label: "仅视频", enabled: props.selectedVideoID >= 0 || !!props.selectedVideoKey },
 ]);
 const chosen = computed(
   () =>
@@ -88,13 +102,20 @@ const cover = computed(() => {
   return value?.startsWith("data:image/") ? value : "";
 });
 
+const videoContainer = computed(() =>
+  resolveVideoContainer(props.selectedVideoCodec, chosen.value?.id === "complete" ? selectedAudio.value?.codec : undefined),
+);
+const videoContainerLabel = computed(() =>
+  videoContainer.value === "webm" ? "WebM" : videoContainer.value === "mkv" ? "MKV" : "MP4",
+);
+
 const downloadLabel = computed(() => {
   if (isImages.value) return "下载";
   switch (chosen.value?.id) {
     case "audio":
       return format.value === "original" ? "下载原始音频" : format.value === "mp3" ? "下载 MP3" : "下载 M4A";
     default:
-      return "下载 MP4";
+      return `下载 ${videoContainerLabel.value}`;
   }
 });
 
@@ -163,9 +184,10 @@ const startDownload = () => {
               :previewMap="previewMap"
               :coverUrl="mediaInfo.coverUrl"
               :selectedVideoID="selectedVideoID"
+              :selectedVideoGroupKey="selectedVideoGroupKey"
               :selectedVideoCodec="selectedVideoCodec"
               :showUnlockCard="showUnlockCard"
-              @select="(id, codec) => emit('update:selectedVideo', id, codec)"
+              @select="(id, codec, groupKey, streamKey) => emit('update:selectedVideo', id, codec, groupKey, streamKey)"
               @unlock="emit('unlock')"
             />
           </div>
@@ -173,11 +195,12 @@ const startDownload = () => {
           <div v-if="chosen?.id === 'video' && codecs.length" class="codec-options media-parameter-row">
             <span>视频编码</span>
             <div class="codec-switch media-parameter-segments" role="group" aria-label="视频编码">
-              <button v-for="stream in codecs" :key="stream.codec" class="segmented-option" :aria-pressed="selectedVideoCodec === stream.codec"
-                @click="emit('update:selectedVideo', selectedVideoID, stream.codec)">{{ codecLabel(stream.codec) }}</button>
+              <button v-for="stream in codecs" :key="videoStreamKey(stream)" class="segmented-option" :aria-pressed="isVideoSelected(stream)"
+                @click="emit('update:selectedVideo', stream.id, stream.codec, currentGroup?.groupKey ?? '', stream.stream_key ?? '')">{{ codecLabel(stream.codec) }}</button>
             </div>
           </div>
-          <p v-if="chosen?.id === 'complete' && selectedAudio?.kind && selectedAudio.kind !== 'standard'" class="media-notice">高级音轨的 MP4 播放兼容性取决于播放器。</p>
+          <p v-if="(chosen?.id === 'complete' || chosen?.id === 'video') && videoContainer !== 'mp4'" class="media-notice">当前编码组合将无损封装为 {{ videoContainerLabel }}，不进行重编码。</p>
+          <p v-else-if="chosen?.id === 'complete' && selectedAudio?.kind && selectedAudio.kind !== 'standard'" class="media-notice">高级音轨的 MP4 播放兼容性取决于播放器。</p>
           <p v-if="chosen?.id === 'audio' && format === 'm4a' && selectedAudio && !/^(mp4a|aac)/i.test(selectedAudio.codec)" class="media-notice">将重新编码为 AAC。</p>
           <PopoverRoot v-if="chosen?.id === 'complete'" v-model:open="advancedOpen">
             <PopoverTrigger class="advanced-trigger"><span><SlidersHorizontal :size="16" />高级设置</span><span class="advanced-summary">{{ codecLabel(selectedVideoCodec) }} · {{ selectedAudio?.quality }}</span><ChevronUp v-if="advancedOpen" :size="16" /><ChevronDown v-else :size="16" /></PopoverTrigger>
@@ -186,8 +209,8 @@ const startDownload = () => {
           <div v-if="codecs.length" class="codec-options media-parameter-row">
             <span>视频编码</span>
             <div class="codec-switch media-parameter-segments" role="group" aria-label="视频编码">
-              <button v-for="stream in codecs" :key="stream.codec" class="segmented-option" :aria-pressed="selectedVideoCodec === stream.codec"
-                @click="emit('update:selectedVideo', selectedVideoID, stream.codec)">{{ codecLabel(stream.codec) }}</button>
+              <button v-for="stream in codecs" :key="videoStreamKey(stream)" class="segmented-option" :aria-pressed="isVideoSelected(stream)"
+                @click="emit('update:selectedVideo', stream.id, stream.codec, currentGroup?.groupKey ?? '', stream.stream_key ?? '')">{{ codecLabel(stream.codec) }}</button>
             </div>
           </div>
           <div class="resource-options">

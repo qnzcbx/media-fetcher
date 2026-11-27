@@ -14,15 +14,22 @@ const props = defineProps<{
 const open = ref(false);
 const ordered = computed(() => sortAudioStreams(props.audioStreams));
 
-defineEmits<{
+const emit = defineEmits<{
   (e: "update:modelValue", val: number, key: string): void;
 }>();
+
+const handleSelect = (value: unknown) => {
+  if (!value) return;
+  const key = String(value);
+  const found = props.audioStreams.find((audio) => audioKey(audio) === key);
+  emit("update:modelValue", found ? found.id : Number(key.split("|")[0]), key);
+};
 </script>
 
 <template>
   <div class="audio-select-container">
     <span>音质</span>
-    <SelectRoot v-model:open="open" :modelValue="selectedAudioKey" @update:modelValue="value => { if (value) $emit('update:modelValue', Number(String(value).split('|')[0]), String(value)); }">
+    <SelectRoot v-model:open="open" :modelValue="selectedAudioKey" @update:modelValue="handleSelect">
       <SelectTrigger class="audio-select" aria-label="音质"><SelectValue /><ChevronDown :size="16" class="audio-chevron" :class="{ open }" /></SelectTrigger>
       <SelectPortal><SelectContent class="audio-menu" position="popper" align="end" :sideOffset="6" :collisionPadding="12"><SelectViewport>
         <SelectItem v-for="audio in ordered" :key="audioKey(audio)" :value="audioKey(audio)" class="audio-item"><SelectItemText>{{ audio.quality }}</SelectItemText><SelectItemIndicator class="audio-check"><Check :size="15" /></SelectItemIndicator></SelectItem>

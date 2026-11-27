@@ -52,10 +52,132 @@ func (p MediaProbe) Seconds() float64 {
 	return n
 }
 
-// PrepareSingleTrack 返回已确认的原轨道，或工作目录中的封装结果。
+// NormalizeVideoCodec 将平台或 ffprobe 编码标识归类为标准视频编码族。
+func NormalizeVideoCodec(codec string) string {
+	c := strings.ToLower(strings.TrimSpace(codec))
+	switch {
+	case strings.HasPrefix(c, "avc"), strings.HasPrefix(c, "h264"), c == "x264":
+		return "avc"
+	case strings.HasPrefix(c, "hev"), strings.HasPrefix(c, "hvc"), strings.HasPrefix(c, "h265"), c == "hevc":
+		return "hevc"
+	case strings.HasPrefix(c, "av01"), c == "av1":
+		return "av1"
+	case strings.HasPrefix(c, "vp09"), strings.HasPrefix(c, "vp9"):
+		return "vp9"
+	case strings.HasPrefix(c, "vp08"), strings.HasPrefix(c, "vp8"):
+		return "vp8"
+	case c == "mpeg4", strings.HasPrefix(c, "mp4v"):
+		return "mpeg4"
+	default:
+		return ""
+	}
+}
+
+// NormalizeAudioCodec 将平台或 ffprobe 编码标识归类为标准音频编码族。
+func NormalizeAudioCodec(codec string) string {
+	c := strings.ToLower(strings.TrimSpace(codec))
+	switch {
+	case c == "mp4a.40.34", c == "mp3":
+		return "mp3"
+	case strings.HasPrefix(c, "mp4a"), c == "aac":
+		return "aac"
+	case strings.HasPrefix(c, "opus"):
+		return "opus"
+	case strings.HasPrefix(c, "vorbis"):
+		return "vorbis"
+	case strings.HasPrefix(c, "flac"):
+		return "flac"
+	case c == "ec-3", c == "eac3", strings.HasPrefix(c, "ec-3"):
+		return "eac3"
+	case c == "ac-3", c == "ac3", strings.HasPrefix(c, "ac-3"):
+		return "ac3"
+	default:
+		return ""
+	}
+}
+
+// ResolveVideoContainer 依据音视频编码组合决定无损输出容器（mp4 / webm / mkv），
+// 优先保持原编码不做静默转码，对未知编码组合明确报错而非猜测。
+func ResolveVideoContainer(videoCodec, audioCodec string) (string, error) {
+	v := NormalizeVideoCodec(videoCodec)
+	if v == "" {
+		return "", fmt.Errorf("不支持的视频编码，无法确定输出容器: %q", videoCodec)
+	}
+
+	// 仅视频模式
+	if strings.TrimSpace(audioCodec) == "" {
+		switch v {
+		case "avc", "hevc", "av1", "mpeg4":
+			return "mp4", nil
+		case "vp9", "vp8":
+			return "webm", nil
+		default:
+			return "", fmt.Errorf("不支持的视频编码容器决策: %q", videoCodec)
+		}
+	}
+
+	a := NormalizeAudioCodec(audioCodec)
+	if a == "" {
+		return "", fmt.Errorf("不支持的音频编码，无法确定输出容器: %q", audioCodec)
+	}
+
+	// 完整视频模式：优先原生无损容器，跨容器组合无损封装至 MKV
+	switch v {
+	case "avc", "hevc", "av1", "mpeg4":
+		switch a {
+		case "aac", "ac3", "eac3", "flac", "mp3":
+			return "mp4", nil
+		case "opus", "vorbis":
+			return "mkv", nil
+		}
+	case "vp9", "vp8":
+		switch a {
+		case "opus", "vorbis":
+			return "webm", nil
+		case "aac", "ac3", "eac3", "flac", "mp3":
+			return "mkv", nil
+		}
+	}
+	return "", fmt.Errorf("不支持的音视频编码组合: video=%q, audio=%q", videoCodec, audioCodec)
+}
+
+// ResolveVideoContainerFromFiles 在元数据编码缺失时回退用 ffprobe 探测实际源轨道再决策输出容器。
+func ResolveVideoContainerFromFiles(ctx context.Context, videoCodec, audioCodec, videoPath, audioPath string) (string, error) {
+	vCodec := strings.TrimSpace(videoCodec)
+	aCodec := strings.TrimSpace(audioCodec)
+	if vCodec == "" && videoPath != "" {
+		if vp, err := ProbeMedia(ctx, videoPath); err == nil {
+			vCodec = firstStreamCodec(vp, "video")
+		}
+	}
+	if audioPath != "" && aCodec == "" {
+		if ap, err := ProbeMedia(ctx, audioPath); err == nil {
+			aCodec = firstStreamCodec(ap, "audio")
+		}
+	}
+	return ResolveVideoContainer(vCodec, aCodec)
+}
+
+func matchesContainerFormat(formatName, target string) bool {
+	tokens := "," + strings.ToLower(formatName) + ","
+	switch target {
+	case "mp4", "m4a":
+		return strings.Contains(tokens, ",mp4,")
+	case "webm":
+		return strings.Contains(tokens, ",webm,")
+	case "mkv":
+		return strings.Contains(tokens, ",matroska,")
+	case "opus":
+		return strings.Contains(tokens, ",ogg,")
+	default:
+		return strings.ToLower(formatName) == target || strings.Contains(tokens, ","+target+",")
+	}
+}
+
+// PrepareSingleTrack 返回已确认的原轨道，或工作目录中的封装/转码结果。
 func PrepareSingleTrack(ctx context.Context, path, output, format string, stage func(string)) (string, error) {
 	switch format {
-	case "mp4", "m4a", "mp3", "flac", "eac3", "ac3", "opus":
+	case "mp4", "webm", "mkv", "m4a", "mp3", "flac", "eac3", "ac3", "opus":
 	default:
 		return "", fmt.Errorf("不支持的输出格式")
 	}
@@ -75,7 +197,10 @@ func PrepareSingleTrack(ctx context.Context, path, output, format string, stage 
 	if format == "mp3" && p.Streams[0].Codec == "mp3" && p.Format.Name == "mp3" {
 		return path, nil
 	}
-	if format != "mp3" && p.Seconds() > 0 && len(p.Streams) == 1 && strings.Contains(","+p.Format.Name+",", ",mp4,") {
+	if format == "webm" && p.Streams[0].Type == "video" && matchesContainerFormat(p.Format.Name, "webm") && (p.Streams[0].Codec == "vp9" || p.Streams[0].Codec == "vp8") {
+		return path, nil
+	}
+	if format != "mp3" && p.Seconds() > 0 && len(p.Streams) == 1 && matchesContainerFormat(p.Format.Name, "mp4") {
 		stream := p.Streams[0]
 		if format == "mp4" && stream.Type == "video" || format == "m4a" && stream.Type == "audio" && stream.Codec == "aac" {
 			return path, nil
@@ -88,6 +213,9 @@ func PrepareSingleTrack(ctx context.Context, path, output, format string, stage 
 	args := []string{"-nostdin", "-v", "error", "-n", "-i", path}
 	switch format {
 	case "mp4":
+		stage("remuxing")
+		args = append(args, "-map", "0:v:0", "-an", "-c:v", "copy", "-movflags", "+faststart")
+	case "webm", "mkv":
 		stage("remuxing")
 		args = append(args, "-map", "0:v:0", "-an", "-c:v", "copy")
 	case "m4a":
@@ -148,17 +276,18 @@ func matchesOutput(p MediaProbe, format, sourceCodec string) bool {
 		return false
 	}
 	s := p.Streams[0]
-	if format == "mp4" {
-		return s.Type == "video" && s.Codec == sourceCodec && strings.Contains(p.Format.Name, "mp4")
+	switch format {
+	case "mp4", "webm", "mkv":
+		return s.Type == "video" && s.Codec == sourceCodec && matchesContainerFormat(p.Format.Name, format)
 	}
 	if s.Type != "audio" {
 		return false
 	}
 	switch format {
 	case "m4a":
-		return s.Codec == "aac" && strings.Contains(p.Format.Name, "mp4")
+		return s.Codec == "aac" && matchesContainerFormat(p.Format.Name, "mp4")
 	case "opus":
-		return s.Codec == "opus" && p.Format.Name == "ogg"
+		return s.Codec == "opus" && matchesContainerFormat(p.Format.Name, "opus")
 	default:
 		return s.Codec == format && p.Format.Name == format
 	}

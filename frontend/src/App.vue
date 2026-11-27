@@ -20,7 +20,7 @@ import { useMediaPreview } from "./composables/useMediaPreview";
 import { useMediaSelection } from "./composables/useMediaSelection";
 import { useDownloads } from "./composables/useDownloads";
 import { usePreferences } from "./composables/usePreferences";
-import { getUniqueVideoStreams } from "./utils/media";
+import { codecLabel, getUniqueVideoStreams } from "./utils/media";
 
 // Composables
 const {
@@ -43,6 +43,8 @@ const { previewMap, loadPreviews } = useMediaPreview();
 const {
   selectedVideoID,
   selectedVideoCodec,
+  selectedVideoGroupKey,
+  selectedVideoKey,
   selectedAudioID,
   selectedAudioKey,
   selectedImages,
@@ -121,7 +123,7 @@ const handleParse = async () => {
   const input = url.value;
   let target = resolveParseTarget(input, getActiveAccountId);
   if (!target.url) {
-    parseError.value = "未找到支持的链接 (Bilibili / LOFTER)";
+    parseError.value = "未找到支持的链接 (Bilibili / YouTube / LOFTER)";
     return;
   }
 
@@ -155,7 +157,10 @@ const handleEpisode = async (episodeURL: string) => {
   snapshot = undefined;
   selectedVideoID.value = -1;
   selectedVideoCodec.value = "";
+  selectedVideoGroupKey.value = "";
+  selectedVideoKey.value = "";
   selectedAudioID.value = -1;
+  selectedAudioKey.value = "";
   const res = await parseEpisode(episodeURL);
   if (res) applyResult(episodeURL, res);
 };
@@ -180,6 +185,7 @@ const handleStartDownload = async (mode: string, format: string) => {
     OutputDir: preferences.value.downloadDirectory,
     VideoID: mode === "images" || mode === "audio" ? -1 : selectedVideoID.value,
     VideoCodec: mode === "images" || mode === "audio" ? "" : selectedVideoCodec.value,
+    VideoKey: mode === "images" || mode === "audio" ? "" : selectedVideoKey.value,
     AudioKey: mode === "audio" || mode === "complete" ? selectedAudioKey.value : "",
     AudioID: mode === "images" || mode === "video" ? -1 : selectedAudioID.value,
     SelectedImage: media.images?.length ? selectedImages.value : [],
@@ -310,6 +316,8 @@ const handleUnlock = () => {
       :previewMap="previewMap"
       :selectedVideoID="selectedVideoID"
       :selectedVideoCodec="selectedVideoCodec"
+      :selectedVideoGroupKey="selectedVideoGroupKey"
+      :selectedVideoKey="selectedVideoKey"
       :selectedAudioID="selectedAudioID"
       :selectedAudioKey="selectedAudioKey"
       :selectedImages="selectedImages"
@@ -319,10 +327,21 @@ const handleUnlock = () => {
       @close="closeResourcePicker"
       @startDownload="handleStartDownload"
       @update:selectedVideo="
-        (id, codec) => {
-          const previousID = selectedVideoID;
-          selectedVideoID = id;
-          selectedVideoCodec = previousID === id ? codec : uniqueVideoStreams.find(group => group.stream.id === id)?.streams.find(stream => stream.codec === selectedVideoCodec)?.codec || codec;
+        (id, codec, groupKey, streamKey) => {
+          const previousGroup = selectedVideoGroupKey;
+          selectedVideoGroupKey = groupKey;
+          if (previousGroup === groupKey) {
+            selectedVideoID = id;
+            selectedVideoCodec = codec;
+            selectedVideoKey = streamKey;
+          } else {
+            const preferred = uniqueVideoStreams
+              .find((group) => group.groupKey === groupKey)
+              ?.streams.find((stream) => codecLabel(stream.codec) === codecLabel(selectedVideoCodec));
+            selectedVideoID = preferred?.id ?? id;
+            selectedVideoCodec = preferred?.codec ?? codec;
+            selectedVideoKey = preferred ? (preferred.stream_key ?? '') : streamKey;
+          }
         }
       "
       @update:selectedAudio="(id, key) => { selectedAudioID = id; selectedAudioKey = key; }"

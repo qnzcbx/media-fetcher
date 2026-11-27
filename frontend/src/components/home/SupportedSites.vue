@@ -6,6 +6,7 @@ import BrandIcon from "../icons/BrandIcon.vue";
 <template>
   <div class="support-text">
     <span class="brand-hover" :style="{ '--brand-color': brands.bilibili.color }"><BrandIcon name="bilibili" /> Bilibili</span>
+    <span class="brand-hover" :style="{ '--brand-color': brands.youtube.color }"><BrandIcon name="youtube" /> YouTube</span>
     <span class="brand-hover" :style="{ '--brand-color': brands.lofter.color }"><BrandIcon name="lofter" /> LOFTER</span>
   </div>
 </template>

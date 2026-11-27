@@ -22,6 +22,7 @@ import (
 	"media-fetcher/core/extractor"
 	"media-fetcher/core/extractor/bilibili"
 	"media-fetcher/core/extractor/lofter"
+	"media-fetcher/core/extractor/youtube"
 	"media-fetcher/pkg/vault"
 )
 
@@ -56,6 +57,7 @@ func NewDesktopService() (*DesktopService, error) {
 
 	reg := extractor.NewRegistry()
 	reg.Register(bilibili.New(credService))
+	reg.Register(youtube.New())
 	reg.Register(lofter.New(credService))
 
 	historyDir, err := historyDirectory()
@@ -99,7 +101,7 @@ func (s *DesktopService) Extract(urlStr string, accountID string) (MediaInfoResp
 
 	finish := s.useAccount(ext.SiteID(), accountID)
 	defer finish()
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 180*time.Second)
 	defer cancel()
 
 	media, err := ext.Extract(ctx, urlStr, extractor.ExtractOptions{
@@ -294,6 +296,7 @@ type DownloadParams struct {
 	OutputDir     string
 	VideoID       int
 	VideoCodec    string
+	VideoKey      string
 	AudioID       int
 	AudioKey      string
 	SelectedImage []int
@@ -575,11 +578,21 @@ func (s *DesktopService) doDownload(ctx context.Context, params DownloadParams) 
 	var targetVideo *extractor.VideoStream
 	var targetAudio *extractor.AudioStream
 
-	if params.VideoID >= 0 {
-		for _, vs := range media.VideoStreams {
-			if vs.ID == params.VideoID && vs.Codec == params.VideoCodec {
-				targetVideo = &vs
-				break
+	if params.VideoID >= 0 || params.VideoKey != "" {
+		for i := range media.VideoStreams {
+			vs := media.VideoStreams[i]
+			matched := false
+			if params.VideoKey != "" && vs.StreamKey != "" {
+				matched = vs.StreamKey == params.VideoKey && (params.VideoCodec == "" || vs.Codec == params.VideoCodec)
+			} else if params.VideoID >= 0 {
+				matched = vs.ID == params.VideoID && vs.Codec == params.VideoCodec
+			}
+			if matched {
+				if targetVideo != nil {
+					return fmt.Errorf("视频轨道标识存在冲突，请重新解析")
+				}
+				vCopy := vs
+				targetVideo = &vCopy
 			}
 		}
 		if targetVideo == nil {
@@ -587,13 +600,21 @@ func (s *DesktopService) doDownload(ctx context.Context, params DownloadParams) 
 		}
 	}
 
-	if params.AudioID >= 0 {
-		for _, as := range media.AudioStreams {
-			if as.ID == params.AudioID && (params.AudioKey == "" || params.AudioKey == strconv.Itoa(as.ID)+"|"+as.Codec+"|"+as.Kind) {
+	if params.AudioID >= 0 || params.AudioKey != "" {
+		for i := range media.AudioStreams {
+			as := media.AudioStreams[i]
+			matched := false
+			if params.AudioKey != "" && as.StreamKey != "" {
+				matched = as.StreamKey == params.AudioKey
+			} else if params.AudioID >= 0 {
+				matched = as.ID == params.AudioID && (params.AudioKey == "" || params.AudioKey == strconv.Itoa(as.ID)+"|"+as.Codec+"|"+as.Kind)
+			}
+			if matched {
 				if targetAudio != nil {
 					return fmt.Errorf("音轨标识存在冲突，请重新解析")
 				}
-				targetAudio = &as
+				aCopy := as
+				targetAudio = &aCopy
 			}
 		}
 		if targetAudio == nil {
@@ -604,8 +625,8 @@ func (s *DesktopService) doDownload(ctx context.Context, params DownloadParams) 
 	aggregate := trackProgress{}
 	completeMode := targetVideo != nil && targetAudio != nil
 	if completeMode {
-		aggregate.total[0] = probeTrackSize(ctx, client, targetVideo.URL)
-		aggregate.total[1] = probeTrackSize(ctx, client, targetAudio.URL)
+		aggregate.total[0] = probeTrackSize(ctx, client, targetVideo.URL, targetVideo.Size, targetVideo.Headers)
+		aggregate.total[1] = probeTrackSize(ctx, client, targetAudio.URL, targetAudio.Size, targetAudio.Headers)
 	}
 	progress := func(track int, stage string, downloaded, total int64) {
 		overallDownloaded, overallTotal := downloaded, total
@@ -617,10 +638,12 @@ func (s *DesktopService) doDownload(ctx context.Context, params DownloadParams) 
 
 	if targetVideo != nil {
 		opts := downloader.DownloadOptions{
-			OutputDir:  workDir,
-			Filename:   "video.tmp",
-			Referer:    "https://www.bilibili.com",
-			OnProgress: func(downloaded, total int64) { progress(0, "video", downloaded, total) },
+			OutputDir:    workDir,
+			Filename:     "video.tmp",
+			Headers:      targetVideo.Headers,
+			ChunkSize:    targetVideo.ChunkSize,
+			ExpectedSize: targetVideo.Size,
+			OnProgress:   func(downloaded, total int64) { progress(0, "video", downloaded, total) },
 		}
 
 		var dlErr error
@@ -642,10 +665,12 @@ func (s *DesktopService) doDownload(ctx context.Context, params DownloadParams) 
 
 	if targetAudio != nil {
 		opts := downloader.DownloadOptions{
-			OutputDir:  workDir,
-			Filename:   "audio.tmp",
-			Referer:    "https://www.bilibili.com",
-			OnProgress: func(downloaded, total int64) { progress(1, "audio", downloaded, total) },
+			OutputDir:    workDir,
+			Filename:     "audio.tmp",
+			Headers:      targetAudio.Headers,
+			ChunkSize:    targetAudio.ChunkSize,
+			ExpectedSize: targetAudio.Size,
+			OnProgress:   func(downloaded, total int64) { progress(1, "audio", downloaded, total) },
 		}
 		var dlErr error
 		downloadedAudio, dlErr = d.Download(ctx, nil, targetAudio.URL, opts)
@@ -665,11 +690,16 @@ func (s *DesktopService) doDownload(ctx context.Context, params DownloadParams) 
 	}
 
 	format, kind, resourceID := "mp4", "video", params.VideoID
-	staged := filepath.Join(workDir, "output.mp4")
+	var staged string
 	if downloadedVideo != "" && downloadedAudio != "" {
+		format, err = downloader.ResolveVideoContainerFromFiles(ctx, targetVideo.Codec, targetAudio.Codec, downloadedVideo, downloadedAudio)
+		if err != nil {
+			return &outputFailure{err}
+		}
+		staged = filepath.Join(workDir, "output."+format)
 		s.emitDownload(params.TaskID, "media", ProgressInfo{Stage: "muxing"})
 		if err := downloader.MuxVideoAudio(ctx, "", downloadedVideo, downloadedAudio, staged); err != nil {
-			return err
+			return &outputFailure{err}
 		}
 	} else {
 		input := downloadedVideo
@@ -684,6 +714,11 @@ func (s *DesktopService) doDownload(ctx context.Context, params DownloadParams) 
 			}
 			if params.AudioFormat == "mp3" {
 				format = "mp3"
+			}
+		} else {
+			format, err = downloader.ResolveVideoContainerFromFiles(ctx, targetVideo.Codec, "", downloadedVideo, "")
+			if err != nil {
+				return &outputFailure{err}
 			}
 		}
 		if input == "" {

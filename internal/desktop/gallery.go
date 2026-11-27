@@ -115,19 +115,34 @@ func writeHistory(dir string, records []DownloadRecord) error {
 	return publishHistoryFile(dir, "history.json", data)
 }
 
+var youtubeVideoIDPattern = regexp.MustCompile(`^[A-Za-z0-9_-]{11}$`)
+
 func cleanSource(raw string) string {
-	u, err := url.Parse(raw)
+	u, err := url.Parse(strings.TrimSpace(raw))
 	if err != nil || u.Hostname() == "" || (u.Scheme != "https" && u.Scheme != "http") {
 		return ""
 	}
-	page := u.Query().Get("p")
-	u.RawQuery = ""
+	host := strings.ToLower(u.Hostname())
+	q := u.Query()
+	kept := url.Values{}
+
+	switch host {
+	case "bilibili.com", "www.bilibili.com", "m.bilibili.com":
+		if n, err := strconv.Atoi(q.Get("p")); err == nil && n > 0 {
+			kept.Set("p", strconv.Itoa(n))
+		}
+	case "youtube.com", "www.youtube.com", "m.youtube.com":
+		if strings.TrimRight(u.Path, "/") == "/watch" {
+			if vid := q.Get("v"); youtubeVideoIDPattern.MatchString(vid) {
+				kept.Set("v", vid)
+			}
+		}
+	}
+
+	u.RawQuery = kept.Encode()
 	u.ForceQuery = false
 	u.Fragment = ""
 	u.User = nil
-	if n, err := strconv.Atoi(page); err == nil && n > 0 {
-		u.RawQuery = "p=" + strconv.Itoa(n)
-	}
 	return u.String()
 }
 

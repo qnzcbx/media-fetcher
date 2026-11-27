@@ -20,6 +20,7 @@ import (
 	"media-fetcher/core/extractor"
 	"media-fetcher/core/extractor/bilibili"
 	"media-fetcher/core/extractor/lofter"
+	"media-fetcher/core/extractor/youtube"
 	"media-fetcher/pkg/fsutil"
 	"media-fetcher/pkg/vault"
 )
@@ -63,6 +64,7 @@ func printUsage() {
 func getRegistry(credService *auth.CredentialService) *extractor.Registry {
 	reg := extractor.NewRegistry()
 	reg.Register(bilibili.New(credService))
+	reg.Register(youtube.New())
 	reg.Register(lofter.New(credService))
 	return reg
 }
@@ -93,7 +95,7 @@ func handleExtract(args []string) {
 		return
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 180*time.Second)
 	defer cancel()
 
 	fmt.Printf("正在使用 [%s] 解析器解析: %s\n", ext.SiteID(), targetURL)
@@ -122,15 +124,23 @@ func handleExtract(args []string) {
 			if v.NeedAuth {
 				authNote = " [需登录]"
 			}
-			fmt.Printf("  [%d] %s %dx%d (codec=%s, 码率=%d bps)%s\n",
-				i, v.QualityLabel, v.Width, v.Height, v.Codec, v.Bandwidth, authNote)
+			keyNote := ""
+			if v.StreamKey != "" {
+				keyNote = fmt.Sprintf(", key=%s", v.StreamKey)
+			}
+			fmt.Printf("  [%d] %s %dx%d (codec=%s%s, 码率=%d bps, 大小=%d B)%s\n",
+				i, v.QualityLabel, v.Width, v.Height, v.Codec, keyNote, v.Bandwidth, v.Size, authNote)
 		}
 	}
 
 	if len(media.AudioStreams) > 0 {
 		fmt.Printf("\n可用音轨 (%d 条):\n", len(media.AudioStreams))
 		for i, a := range media.AudioStreams {
-			fmt.Printf("  [%d] %s (codec=%s, 码率=%d bps)\n", i, a.Quality, a.Codec, a.Bandwidth)
+			keyNote := ""
+			if a.StreamKey != "" {
+				keyNote = fmt.Sprintf(", key=%s", a.StreamKey)
+			}
+			fmt.Printf("  [%d] %s (codec=%s%s, 码率=%d bps, 大小=%d B)\n", i, a.Quality, a.Codec, keyNote, a.Bandwidth, a.Size)
 		}
 	}
 
@@ -259,9 +269,12 @@ func handleDownload(args []string) {
 	outputDir := fs.String("output", ".", "输出目录")
 	accountID := fs.String("account", "", "指定登录账号ID")
 	videoIdx := fs.Int("video", -1, "选择视频流序号")
+	videoKey := fs.String("video-key", "", "按平台轨道键精确选择视频流")
 	audioIdx := fs.Int("audio", -1, "选择音频流序号")
+	audioKey := fs.String("audio-key", "", "按平台轨道键精确选择音频流")
 	audioFormat := fs.String("audio-format", "original", "音频输出 original/m4a/mp3")
 	audioOnly := fs.Bool("audio-only", false, "仅下载音频")
+	videoOnly := fs.Bool("video-only", false, "仅下载视频")
 	requireAuth := fs.Bool("require-auth", false, "必须使用登录账号")
 	_ = fs.Parse(args)
 
@@ -363,6 +376,35 @@ func handleDownload(args []string) {
 	vIdx := *videoIdx
 	aIdx := *audioIdx
 
+	if !*audioOnly && *videoKey != "" {
+		found := -1
+		for i, vs := range media.VideoStreams {
+			if vs.StreamKey == *videoKey {
+				found = i
+				break
+			}
+		}
+		if found < 0 {
+			fmt.Fprintf(os.Stderr, "未找到指定视频轨道 key=%s\n", *videoKey)
+			os.Exit(1)
+		}
+		vIdx = found
+	}
+	if !*videoOnly && *audioKey != "" {
+		found := -1
+		for i, as := range media.AudioStreams {
+			if as.StreamKey == *audioKey {
+				found = i
+				break
+			}
+		}
+		if found < 0 {
+			fmt.Fprintf(os.Stderr, "未找到指定音频轨道 key=%s\n", *audioKey)
+			os.Exit(1)
+		}
+		aIdx = found
+	}
+
 	if !*audioOnly && len(media.VideoStreams) > 0 && vIdx < 0 {
 		fmt.Printf("可用视频流:\n")
 		for i, vs := range media.VideoStreams {
@@ -378,7 +420,7 @@ func handleDownload(args []string) {
 		}
 	}
 
-	if len(media.AudioStreams) > 0 && aIdx < 0 {
+	if !*videoOnly && len(media.AudioStreams) > 0 && aIdx < 0 {
 		fmt.Printf("可用音轨:\n")
 		for i, as := range media.AudioStreams {
 			fmt.Printf("  [%d] %s (codec=%s)\n", i, as.Quality, as.Codec)
@@ -395,6 +437,8 @@ func handleDownload(args []string) {
 
 	var downloadedVideo string
 	var downloadedAudio string
+	var selectedVideo *extractor.VideoStream
+	var selectedAudio *extractor.AudioStream
 
 	title := downloader.SanitizeFilename(media.Title)
 	if title == "media_download" {
@@ -403,14 +447,17 @@ func handleDownload(args []string) {
 
 	if !*audioOnly && vIdx >= 0 && vIdx < len(media.VideoStreams) {
 		vs := media.VideoStreams[vIdx]
+		selectedVideo = &vs
 		opts := downloader.DownloadOptions{
-			OutputDir: *outputDir,
-			Filename:  fmt.Sprintf("%s.video.tmp", title),
-			Referer:   "https://www.bilibili.com", // 如果需要可以从 MediaInfo 扩展
+			OutputDir:    *outputDir,
+			Filename:     fmt.Sprintf("%s.video.tmp", title),
+			Headers:      vs.Headers,
+			ChunkSize:    vs.ChunkSize,
+			ExpectedSize: vs.Size,
 			OnProgress: func(downloaded, total int64) {
 			},
 		}
-		fmt.Printf("正在下载视频: %s\n", vs.QualityLabel)
+		fmt.Printf("正在下载视频: %s (codec=%s)\n", vs.QualityLabel, vs.Codec)
 
 		var err error
 		downloadedVideo, err = d.Download(ctx, nil, vs.URL, opts)
@@ -426,24 +473,27 @@ func handleDownload(args []string) {
 			}
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "视频下载失败: %v\n", err)
-				return
+				os.Exit(1)
 			}
 		}
 	}
 
-	if aIdx >= 0 && aIdx < len(media.AudioStreams) {
+	if !*videoOnly && aIdx >= 0 && aIdx < len(media.AudioStreams) {
 		as := media.AudioStreams[aIdx]
+		selectedAudio = &as
 		ext := ".source.tmp"
 		opts := downloader.DownloadOptions{
-			OutputDir: *outputDir,
-			Filename:  fmt.Sprintf("%s.audio%s", title, ext),
-			Referer:   "https://www.bilibili.com",
+			OutputDir:    *outputDir,
+			Filename:     fmt.Sprintf("%s.audio%s", title, ext),
+			Headers:      as.Headers,
+			ChunkSize:    as.ChunkSize,
+			ExpectedSize: as.Size,
 		}
 		if !*audioOnly && downloadedVideo != "" {
 			opts.Filename = fmt.Sprintf("%s.audio.tmp", title)
 		}
 
-		fmt.Printf("正在下载音轨: %s\n", as.Quality)
+		fmt.Printf("正在下载音轨: %s (codec=%s)\n", as.Quality, as.Codec)
 		var err error
 		downloadedAudio, err = d.Download(ctx, nil, as.URL, opts)
 		if err != nil {
@@ -458,7 +508,7 @@ func handleDownload(args []string) {
 			}
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "音频下载失败: %v\n", err)
-				return
+				os.Exit(1)
 			}
 		}
 	}
@@ -468,33 +518,46 @@ func handleDownload(args []string) {
 		ffmpegPath, err := downloader.FindFFmpeg()
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "合并失败: 未找到 FFmpeg (请配置环境变量或将其放置于系统目录中): %v\n", err)
-			return
+			os.Exit(1)
 		}
-		finalOut := filepath.Join(*outputDir, fmt.Sprintf("%s.mp4", title))
+		container, err := downloader.ResolveVideoContainerFromFiles(ctx, selectedVideo.Codec, selectedAudio.Codec, downloadedVideo, downloadedAudio)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "容器决策失败: %v\n", err)
+			os.Exit(1)
+		}
+		finalOut := filepath.Join(*outputDir, fmt.Sprintf("%s.%s", title, container))
 		err = downloader.MuxVideoAudio(ctx, ffmpegPath, downloadedVideo, downloadedAudio, finalOut)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "合并失败: %v\n", err)
+			os.Exit(1)
 		} else {
 			fmt.Printf("合并完成: %s\n", finalOut)
 			os.Remove(downloadedVideo)
 			os.Remove(downloadedAudio)
 		}
 	} else if downloadedVideo != "" {
-		finalOut := filepath.Join(*outputDir, fmt.Sprintf("%s.mp4", title))
+		container, err := downloader.ResolveVideoContainerFromFiles(ctx, selectedVideo.Codec, "", downloadedVideo, "")
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "容器决策失败: %v\n", err)
+			os.Exit(1)
+		}
+		finalOut := filepath.Join(*outputDir, fmt.Sprintf("%s.%s", title, container))
 		work, err := os.MkdirTemp(*outputDir, ".video-output-")
 		if err != nil {
 			fmt.Fprintln(os.Stderr, err)
-			return
+			os.Exit(1)
 		}
 		defer os.RemoveAll(work)
-		prepared, err := downloader.PrepareSingleTrack(ctx, downloadedVideo, filepath.Join(work, "output.mp4"), "mp4", func(stage string) { fmt.Println(stage) })
+		prepared, err := downloader.PrepareSingleTrack(ctx, downloadedVideo, filepath.Join(work, "output."+container), container, func(stage string) { fmt.Println(stage) })
 		if err != nil {
 			fmt.Fprintln(os.Stderr, err)
-			return
+			os.Exit(1)
 		}
 		if err := fsutil.PublishFile(prepared, finalOut, fsutil.StrategyCreateNew); err != nil {
 			fmt.Fprintf(os.Stderr, "文件发布失败: %v\n", err)
+			os.Exit(1)
 		} else {
+			os.Remove(downloadedVideo)
 			fmt.Printf("下载完成: %s\n", finalOut)
 		}
 	} else if downloadedAudio != "" {

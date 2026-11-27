@@ -88,7 +88,50 @@ func TestGalleryPartialDownloadAndRestart(t *testing.T) {
 }
 
 func TestGallerySourceKeepsOnlyPart(t *testing.T) {
-	if got := cleanSource("https://www.bilibili.com/video/BV1xx411c7mD?p=2&token=fixture#noise"); got != "https://www.bilibili.com/video/BV1xx411c7mD?p=2" {
-		t.Fatal(got)
+	cases := []struct {
+		name string
+		in   string
+		want string
+	}{
+		{
+			name: "bilibili video keeps part",
+			in:   "https://www.bilibili.com/video/BV1xx411c7mD?p=2&token=fixture#noise",
+			want: "https://www.bilibili.com/video/BV1xx411c7mD?p=2",
+		},
+		{
+			name: "bilibili bangumi strips noise",
+			in:   "https://www.bilibili.com/bangumi/play/ep748435/?from_spmid=abc&token=1",
+			want: "https://www.bilibili.com/bangumi/play/ep748435/",
+		},
+		{
+			name: "youtube watch keeps v only",
+			in:   "https://www.youtube.com/watch?v=aqz-KE-bpKQ&list=PL123&si=tracking&t=30#frag",
+			want: "https://www.youtube.com/watch?v=aqz-KE-bpKQ",
+		},
+		{
+			name: "youtube watch drops invalid v",
+			in:   "https://www.youtube.com/watch?v=invalid!id&si=abc",
+			want: "https://www.youtube.com/watch",
+		},
+		{
+			name: "youtu.be strips tracking query",
+			in:   "https://youtu.be/aqz-KE-bpKQ?si=secret&t=12",
+			want: "https://youtu.be/aqz-KE-bpKQ",
+		},
+		{
+			name: "youtube shorts strips tracking query",
+			in:   "https://www.youtube.com/shorts/aqz-KE-bpKQ?feature=share&si=xyz",
+			want: "https://www.youtube.com/shorts/aqz-KE-bpKQ",
+		},
+		{
+			name: "strips userinfo credentials",
+			in:   "https://user:pass@www.youtube.com/watch?v=aqz-KE-bpKQ",
+			want: "https://www.youtube.com/watch?v=aqz-KE-bpKQ",
+		},
+	}
+	for _, tc := range cases {
+		if got := cleanSource(tc.in); got != tc.want {
+			t.Errorf("%s: got %q, want %q", tc.name, got, tc.want)
+		}
 	}
 }

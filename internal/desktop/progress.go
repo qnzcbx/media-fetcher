@@ -2,8 +2,13 @@ package desktop
 
 import (
 	"context"
+	"io"
 	"net/http"
+	"strconv"
+	"strings"
 	"time"
+
+	"media-fetcher/core/downloader"
 )
 
 type trackProgress struct {
@@ -23,23 +28,57 @@ func (p *trackProgress) update(track int, downloaded, total int64) (int64, int64
 	}
 	return p.downloaded[0] + p.downloaded[1], sum
 }
-func probeTrackSize(ctx context.Context, client *http.Client, url string) int64 {
-	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
+
+// probeTrackSize 优先使用轨道声明的可靠大小；缺失时使用与下载一致的安全请求头探测，
+// HEAD 被拒（如 403/405）时自动回退为 Range: bytes=0-0 探测。
+func probeTrackSize(ctx context.Context, client *http.Client, rawURL string, knownSize int64, headers map[string]string) int64 {
+	if knownSize > 0 {
+		return knownSize
+	}
+	if client == nil {
+		client = &http.Client{Timeout: 5 * time.Second}
+	}
+	probeCtx, cancel := context.WithTimeout(ctx, 4*time.Second)
 	defer cancel()
-	req, err := http.NewRequestWithContext(ctx, http.MethodHead, url, nil)
+
+	req, err := http.NewRequestWithContext(probeCtx, http.MethodHead, rawURL, nil)
 	if err != nil {
 		return 0
 	}
-	req.Header.Set("Referer", "https://www.bilibili.com")
-	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
+	downloader.ApplySafeHeaders(req, headers, "", "")
 	req.Header.Set("Accept-Encoding", "identity")
 	resp, err := client.Do(req)
+	if err == nil {
+		defer resp.Body.Close()
+		if resp.StatusCode == http.StatusOK && resp.Header.Get("Content-Encoding") == "" && resp.ContentLength > 0 {
+			return resp.ContentLength
+		}
+		if resp.StatusCode != http.StatusForbidden && resp.StatusCode != http.StatusMethodNotAllowed {
+			return 0
+		}
+	}
+
+	// HEAD 不受支持或返回 403/405 时回退为 bytes=0-0 探测
+	reqRange, err := http.NewRequestWithContext(probeCtx, http.MethodGet, rawURL, nil)
 	if err != nil {
 		return 0
 	}
-	defer resp.Body.Close()
-	if resp.StatusCode != 200 || resp.Header.Get("Content-Encoding") != "" {
+	downloader.ApplySafeHeaders(reqRange, headers, "", "")
+	reqRange.Header.Set("Range", "bytes=0-0")
+	respRange, err := client.Do(reqRange)
+	if err != nil {
 		return 0
 	}
-	return resp.ContentLength
+	defer respRange.Body.Close()
+	_, _ = io.Copy(io.Discard, io.LimitReader(respRange.Body, 1024))
+	if respRange.StatusCode != http.StatusPartialContent {
+		return 0
+	}
+	cr := respRange.Header.Get("Content-Range")
+	if idx := strings.LastIndex(cr, "/"); idx >= 0 && idx+1 < len(cr) {
+		if total, parseErr := strconv.ParseInt(cr[idx+1:], 10, 64); parseErr == nil && total > 0 {
+			return total
+		}
+	}
+	return 0
 }
