@@ -45,6 +45,18 @@ export const getUniqueVideoStreams = (streams: VideoStream[]): UniqueVideoStream
   });
 };
 
+// 切换画质分组时，优先保留当前编码（先精确匹配再按编码家族匹配），不可用时回退该分组代表轨道。
+export const pickVideoStreamForGroup = (group: UniqueVideoStream, currentCodec: string): VideoStream => {
+  if (currentCodec) {
+    const exact = group.streams.find((stream) => stream.codec === currentCodec);
+    if (exact) return exact;
+    const family = codecLabel(currentCodec);
+    const sameFamily = group.streams.find((stream) => codecLabel(stream.codec) === family);
+    if (sameFamily) return sameFamily;
+  }
+  return group.stream;
+};
+
 export const getBestAudioStream = (streams: AudioStream[]): AudioStream | undefined => {
   if (!streams || streams.length === 0) return undefined;
   const bestAudio = [...streams].sort(

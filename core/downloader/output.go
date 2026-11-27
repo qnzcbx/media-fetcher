@@ -34,7 +34,7 @@ func ProbeMedia(ctx context.Context, path string) (MediaProbe, error) {
 		}
 		tool = filepath.Join(filepath.Dir(ffmpeg), "ffprobe"+filepath.Ext(ffmpeg))
 	}
-	ctx, cancel := context.WithTimeout(ctx, 4*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
 	defer cancel()
 	data, err := exec.CommandContext(ctx, tool, "-v", "error", "-show_entries", "format=format_name,duration:stream=codec_type,codec_name", "-of", "json", "-i", path).Output()
 	if err != nil {

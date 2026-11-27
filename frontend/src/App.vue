@@ -20,7 +20,7 @@ import { useMediaPreview } from "./composables/useMediaPreview";
 import { useMediaSelection } from "./composables/useMediaSelection";
 import { useDownloads } from "./composables/useDownloads";
 import { usePreferences } from "./composables/usePreferences";
-import { codecLabel, getUniqueVideoStreams } from "./utils/media";
+import { getUniqueVideoStreams } from "./utils/media";
 
 // Composables
 const {
@@ -328,20 +328,10 @@ const handleUnlock = () => {
       @startDownload="handleStartDownload"
       @update:selectedVideo="
         (id, codec, groupKey, streamKey) => {
-          const previousGroup = selectedVideoGroupKey;
+          selectedVideoID = id;
+          selectedVideoCodec = codec;
           selectedVideoGroupKey = groupKey;
-          if (previousGroup === groupKey) {
-            selectedVideoID = id;
-            selectedVideoCodec = codec;
-            selectedVideoKey = streamKey;
-          } else {
-            const preferred = uniqueVideoStreams
-              .find((group) => group.groupKey === groupKey)
-              ?.streams.find((stream) => codecLabel(stream.codec) === codecLabel(selectedVideoCodec));
-            selectedVideoID = preferred?.id ?? id;
-            selectedVideoCodec = preferred?.codec ?? codec;
-            selectedVideoKey = preferred ? (preferred.stream_key ?? '') : streamKey;
-          }
+          selectedVideoKey = streamKey;
         }
       "
       @update:selectedAudio="(id, key) => { selectedAudioID = id; selectedAudioKey = key; }"

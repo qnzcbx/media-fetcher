@@ -48,6 +48,7 @@ export const DesktopService = new Proxy({}, {
     if (key === "getDefaultDownloadDirectory") return async () => "C:/Downloads";
     if (key === "extract") return async () => ytMedia;
     if (key === "startDownload") return async (params) => {
+      window.__lastDownloadParams = params;
       const ext = params.VideoCodec.startsWith("vp9") && params.AudioKey === "251" ? "webm" : params.VideoCodec.startsWith("vp9") || params.AudioKey === "251" ? "mkv" : "mp4";
       const rec = {
         id: params.TaskID + "-media",
@@ -105,10 +106,21 @@ with sync_playwright() as p:
         expect(page.locator(".media-card")).to_have_count(3)
         # 默认最高画质 4K 60帧（VP9）+ AAC -> 无损 MKV 预览
         expect(page.get_by_role("button", name="下载 MKV", exact=True)).to_be_visible()
-        # 切换至 720P 60帧（仅 AVC）+ AAC -> 下载 MP4，再切到 1080P 60帧 保持 AVC -> 下载 MP4
+        expect(page.locator(".advanced-summary")).to_contain_text("VP9")
+        # 切换至 1080P 60帧（代表轨为 AVC 299，但当前为 VP9）-> 优先保留 VP9（303）而非回退代表轨
+        page.locator(".media-card").filter(has_text="1080P 60帧").click()
+        expect(page.locator(".advanced-summary")).to_contain_text("VP9")
+        expect(page.get_by_role("button", name="下载 MKV", exact=True)).to_be_visible()
+        # 再次点击当前已选 1080P 60帧卡片 -> 仍保留 VP9，不被代表轨 AVC 覆盖
+        page.locator(".media-card").filter(has_text="1080P 60帧").click()
+        expect(page.locator(".advanced-summary")).to_contain_text("VP9")
+        expect(page.get_by_role("button", name="下载 MKV", exact=True)).to_be_visible()
+        # 切换至 720P 60帧（仅 AVC）+ AAC -> 回退代表轨 AVC 并变为下载 MP4，再切回 1080P 60帧 保持 AVC -> 下载 MP4
         page.locator(".media-card").filter(has_text="720P 60帧").click()
+        expect(page.locator(".advanced-summary")).to_contain_text("AVC")
         expect(page.get_by_role("button", name="下载 MP4", exact=True)).to_be_visible()
         page.locator(".media-card").filter(has_text="1080P 60帧").click()
+        expect(page.locator(".advanced-summary")).to_contain_text("AVC")
         expect(page.get_by_role("button", name="下载 MP4", exact=True)).to_be_visible()
         page.wait_for_timeout(200)
         page.screenshot(path=str(OUTPUT / f"{theme}-youtube-complete-mock.png"))
@@ -138,10 +150,14 @@ with sync_playwright() as p:
         page.wait_for_timeout(200)
         page.screenshot(path=str(OUTPUT / f"{theme}-youtube-audio-only-mock.png"))
 
-        # 5. 切回完整视频并触发下载 -> 验收下载完成后列表（打开详细管理页展示完整下载列表）
+        # 5. 切回完整视频并触发下载 -> 验收传入准确 StreamKey 与下载完成列表
         page.get_by_role("button", name="完整视频", exact=True).click()
         page.get_by_role("button", name="下载 WebM", exact=True).click()
         expect(page.locator(".resource-modal")).to_have_count(0)
+        last_params = page.evaluate("() => window.__lastDownloadParams")
+        assert last_params["VideoKey"] == "303", f"expected VideoKey 303, got {last_params}"
+        assert last_params["VideoCodec"] == "vp9", f"expected VideoCodec vp9, got {last_params}"
+        assert last_params["AudioKey"] == "251", f"expected AudioKey 251, got {last_params}"
         expect(page.get_by_role("button", name="打开详细管理页")).to_be_visible()
         page.get_by_role("button", name="打开详细管理页").click()
         expect(page.get_by_text("Big Buck Bunny 60fps 4K")).to_be_visible()

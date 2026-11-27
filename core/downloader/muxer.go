@@ -170,16 +170,35 @@ func verifyMuxedOutput(ctx context.Context, videoPath, audioPath, outputPath, fo
 		return fmt.Errorf("%w: 输出轨道数量异常 (video=%d, audio=%d)", ErrMuxFailed, videoCount, audioCount)
 	}
 
-	// 与源轨道核对编码一致性，确认未发生静默转码
-	if vp, err := ProbeMedia(ctx, videoPath); err == nil {
-		if srcV := firstStreamCodec(vp, "video"); srcV != "" && srcV != outVideoCodec {
-			return fmt.Errorf("%w: 视频编码在封装中发生非预期变化 (%s -> %s)", ErrMuxFailed, srcV, outVideoCodec)
+	// 与源轨道核对编码一致性，确认未发生静默转码；源轨道探测失败或缺失编码时不得跳过校验
+	vp, err := ProbeMedia(ctx, videoPath)
+	if err != nil {
+		if ctx.Err() != nil {
+			return ctx.Err()
 		}
+		return fmt.Errorf("%w: ffprobe 源视频轨道校验失败: %v", ErrMuxFailed, err)
 	}
-	if ap, err := ProbeMedia(ctx, audioPath); err == nil {
-		if srcA := firstStreamCodec(ap, "audio"); srcA != "" && srcA != outAudioCodec {
-			return fmt.Errorf("%w: 音频编码在封装中发生非预期变化 (%s -> %s)", ErrMuxFailed, srcA, outAudioCodec)
+	srcV := firstStreamCodec(vp, "video")
+	if srcV == "" {
+		return fmt.Errorf("%w: 源视频文件缺少有效视频轨道编码", ErrMuxFailed)
+	}
+	if srcV != outVideoCodec {
+		return fmt.Errorf("%w: 视频编码在封装中发生非预期变化 (%s -> %s)", ErrMuxFailed, srcV, outVideoCodec)
+	}
+
+	ap, err := ProbeMedia(ctx, audioPath)
+	if err != nil {
+		if ctx.Err() != nil {
+			return ctx.Err()
 		}
+		return fmt.Errorf("%w: ffprobe 源音频轨道校验失败: %v", ErrMuxFailed, err)
+	}
+	srcA := firstStreamCodec(ap, "audio")
+	if srcA == "" {
+		return fmt.Errorf("%w: 源音频文件缺少有效音频轨道编码", ErrMuxFailed)
+	}
+	if srcA != outAudioCodec {
+		return fmt.Errorf("%w: 音频编码在封装中发生非预期变化 (%s -> %s)", ErrMuxFailed, srcA, outAudioCodec)
 	}
 	return nil
 }

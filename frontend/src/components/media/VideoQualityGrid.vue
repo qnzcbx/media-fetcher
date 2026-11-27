@@ -1,9 +1,9 @@
 <script setup lang="ts">
 import MediaQualityCard from "./MediaQualityCard.vue";
 import MediaQualityGrid from "./MediaQualityGrid.vue";
-import type { UniqueVideoStream } from "../../utils/media";
+import { pickVideoStreamForGroup, type UniqueVideoStream } from "../../utils/media";
 
-defineProps<{
+const props = defineProps<{
   videoStreams: UniqueVideoStream[];
   previewMap: Record<string, string>;
   coverUrl: string;
@@ -13,10 +13,15 @@ defineProps<{
   showUnlockCard?: boolean;
 }>();
 
-defineEmits<{
+const emit = defineEmits<{
   (e: "select", id: number, codec: string, groupKey: string, streamKey: string): void;
   (e: "unlock"): void;
 }>();
+
+const selectQuality = (item: UniqueVideoStream) => {
+  const target = pickVideoStreamForGroup(item, props.selectedVideoCodec);
+  emit("select", target.id, target.codec, item.groupKey, target.stream_key ?? "");
+};
 </script>
 
 <template>
@@ -27,7 +32,7 @@ defineEmits<{
       label="点击解锁高品质"
       locked
       accent-label
-      @select="$emit('unlock')"
+      @select="emit('unlock')"
     />
 
     <MediaQualityCard
@@ -36,7 +41,7 @@ defineEmits<{
       :cover="previewMap[coverUrl]"
       :label="item.stream.quality_label"
       :selected="selectedVideoGroupKey ? selectedVideoGroupKey === item.groupKey : selectedVideoID === item.stream.id"
-      @select="$emit('select', item.stream.id, item.stream.codec, item.groupKey, item.stream.stream_key ?? '')"
+      @select="selectQuality(item)"
     />
   </MediaQualityGrid>
 </template>
