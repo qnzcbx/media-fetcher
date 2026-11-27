@@ -448,9 +448,11 @@ func (s *DesktopService) doDownload(ctx context.Context, params DownloadParams) 
 	}
 	client := s.credService.GetAnonymousClient(media.SiteID)
 	if media.UsedAccountID != "" {
-		if c, err := s.credService.GetClient(media.SiteID, media.UsedAccountID); err == nil {
-			client = c
+		c, err := s.credService.GetClient(media.SiteID, media.UsedAccountID)
+		if err != nil {
+			return fmt.Errorf("%w: 下载账号会话不可用", extractor.ErrCredentialExpired)
 		}
+		client = c
 	}
 
 	if client != nil {

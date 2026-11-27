@@ -91,7 +91,7 @@ func TestPGCRejectsRestrictedResources(t *testing.T) {
 		name, reply string
 		want        error
 	}{
-		{"login", `{"code":-101,"message":"请登录"}`, extractor.ErrCredentialExpired},
+		{"login", `{"code":-101,"message":"请登录"}`, extractor.ErrAPIDenied},
 		{"permission", `{"code":-10403,"message":"大会员或地区限制"}`, extractor.ErrAPIDenied},
 		{"preview", `{"code":0,"result":{"play_check":{"play_detail":"PLAY_PREVIEW"}}}`, extractor.ErrAPIDenied},
 		{"drm", `{"code":0,"result":{"video_info":{"is_drm":true}}}`, extractor.ErrUnsupportedMedia},

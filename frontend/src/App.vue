@@ -37,7 +37,7 @@ const {
   closeQRModal,
 } = useCredentials();
 
-const { isParsing, parseError, mediaInfo, parse, clearMediaInfo } = useMediaParser();
+const { isParsing, parseError, episodeError, selectedEpisodeURL, parseEpisode, mediaInfo, parse, clearMediaInfo } = useMediaParser();
 const { previewMap, loadPreviews } = useMediaPreview();
 const {
   selectedVideoID,
@@ -115,15 +115,25 @@ const handleParse = async () => {
   }
 };
 
+const closeResourcePicker = () => {
+  snapshot = undefined;
+  episodeOptions.value = [];
+  clearMediaInfo();
+};
+
 const handleEpisode = async (episodeURL: string) => {
-  const original = snapshot;
-  if (!original || isParsing.value || !episodeOptions.value.some((ep) => ep.url === episodeURL)) return;
-  const res = await parse(episodeURL, original.media.usedAccountId, () => snapshot === original && mediaInfo.value === original.media);
+  if (!episodeOptions.value.some((ep) => ep.url === episodeURL)) return;
+  snapshot = undefined;
+  selectedVideoID.value = -1;
+  selectedVideoCodec.value = "";
+  selectedAudioID.value = -1;
+  const res = await parseEpisode(episodeURL);
   if (res) applyResult(episodeURL, res);
 };
 
 const handleStartDownload = async (mode: string, format: string) => {
-  if (!snapshot || mediaInfo.value !== snapshot.media) return;
+  if (isParsing.value || !snapshot || mediaInfo.value !== snapshot.media ||
+    (selectedEpisodeURL.value && snapshot.url !== selectedEpisodeURL.value)) return;
   const { url, media } = snapshot;
 
   const params = {
@@ -146,7 +156,7 @@ const handleStartDownload = async (mode: string, format: string) => {
   };
 
   if ((await doDownload(params, media, previewMap.value)) && mediaInfo.value === media)
-    clearMediaInfo();
+    closeResourcePicker();
 };
 
 const uniqueVideoStreams = computed(() => {
@@ -166,7 +176,7 @@ const handleUnlock = () => {
       isCurrent() && snapshot === original && mediaInfo.value === original.media;
     if (!canApply() || isParsing.value) return;
     const oldAudioId = selectedAudioID.value;
-    const res = await parse(original.url, accountId, canApply);
+    const res = await parse(original.url, accountId, canApply, !!selectedEpisodeURL.value);
     if (res) {
       applyResult(original.url, res);
       if (res.audioStreams?.some((audio) => audio.id === oldAudioId)) {
@@ -253,10 +263,12 @@ const handleUnlock = () => {
     <ResourcePicker
       :episodes="episodeOptions"
       :episodeBusy="isParsing"
+      :selectedEpisodeURL="selectedEpisodeURL"
+      @retryEpisode="handleEpisode(selectedEpisodeURL)"
       @selectEpisode="handleEpisode"
       v-if="mediaInfo"
       :mediaInfo="mediaInfo"
-      :parseError="parseError || credentialError || downloadError"
+      :parseError="episodeError || parseError || credentialError || downloadError"
       :downloadBusy="isDownloading"
       :previewMap="previewMap"
       :selectedVideoID="selectedVideoID"
@@ -266,7 +278,7 @@ const handleUnlock = () => {
       :uniqueVideoStreams="uniqueVideoStreams"
       :showUnlockCard="showUnlockCard"
       :defaultAudioFormat="preferences.defaultAudioFormat"
-      @close="clearMediaInfo"
+      @close="closeResourcePicker"
       @startDownload="handleStartDownload"
       @update:selectedVideo="
         (id, codec) => {

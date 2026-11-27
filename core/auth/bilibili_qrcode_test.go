@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"testing"
 
 	"media-fetcher/pkg/vault"
@@ -56,7 +57,7 @@ func TestBilibiliQRLoginCoordinator_FullFlow(t *testing.T) {
 				// 状态 3：确认登录并下发 Cookie
 				http.SetCookie(w, &http.Cookie{
 					Name:     "SESSDATA",
-					Value:    "sess_verified_token",
+					Value:    "sess%2Cverified%2Ftoken",
 					Path:     "/",
 					Domain:   ".bilibili.com",
 					HttpOnly: true,
@@ -66,7 +67,7 @@ func TestBilibiliQRLoginCoordinator_FullFlow(t *testing.T) {
 					"code": 0,
 					"data": map[string]interface{}{
 						"code": 0,
-						"url":  "https://passport.bilibili.com/crossDomain?SESSDATA=sess_verified_token",
+						"url":  "https://passport.bilibili.com/crossDomain?SESSDATA=sess%2Cverified%2Ftoken",
 					},
 				})
 			}
@@ -138,7 +139,34 @@ func TestBilibiliQRLoginCoordinator_FullFlow(t *testing.T) {
 	}
 	u, _ := http.NewRequest("GET", "https://bilibili.com", nil)
 	cookies := client.Jar.Cookies(u.URL)
-	if len(cookies) == 0 || cookies[0].Value != "sess_verified_token" {
+	if len(cookies) == 0 || cookies[0].Value != "sess%2Cverified%2Ftoken" {
 		t.Fatalf("cookies not set in client jar: %v", cookies)
+	}
+	restored, err := NewCredentialService(storageDir, v)
+	if err != nil {
+		t.Fatal(err)
+	}
+	restoredClient, err := restored.GetClient("bilibili", "987654321")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, client := range []*http.Client{client, restoredClient} {
+		req, _ := http.NewRequest("GET", "https://api.bilibili.com/pgc/player/web/v2/playurl", nil)
+		for _, cookie := range client.Jar.Cookies(req.URL) {
+			req.AddCookie(cookie)
+		}
+		cookie, err := req.Cookie("SESSDATA")
+		if err != nil || cookie.Value != "sess%2Cverified%2Ftoken" {
+			t.Fatal("SESSDATA 未按原值持久化并发送")
+		}
+	}
+}
+
+func TestLoginSessionValuePreservesEscapes(t *testing.T) {
+	for _, value := range []string{"plain", "test%2Csession%2Fvalue", "test%252Csession", "test+value"} {
+		u, err := url.Parse("https://passport.bilibili.com/crossDomain?SESSDATA=" + value + "&bili_jct=test")
+		if err != nil || loginSessionValue(u) != value {
+			t.Fatal("登录 URL 的 SESSDATA 被改写")
+		}
 	}
 }

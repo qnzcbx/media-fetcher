@@ -75,7 +75,7 @@ func (e *BilibiliExtractor) extractPGC(ctx context.Context, client *http.Client,
 		return nil, fmt.Errorf("%w: 番剧元数据格式无效", extractor.ErrAPIDenied)
 	}
 	if season.Code != 0 {
-		return nil, pgcAPIError(season.Code, season.Message)
+		return nil, pgcAPIError(season.Code, season.Message, anon)
 	}
 	episodes := season.Result.Episodes
 	for _, section := range season.Result.Section {
@@ -138,33 +138,36 @@ func (e *BilibiliExtractor) extractPGC(ctx context.Context, client *http.Client,
 		return nil, fmt.Errorf("%w: 番剧播放响应格式无效", extractor.ErrAPIDenied)
 	}
 	if play.Code != 0 {
-		return nil, pgcAPIError(play.Code, play.Message)
+		return nil, pgcAPIError(play.Code, play.Message, anon)
 	}
 	v := play.Result.VideoInfo
 	if v.IsDRM || v.DRMTechType != 0 {
 		return nil, fmt.Errorf("%w: DRM 资源", extractor.ErrUnsupportedMedia)
 	}
 	if v.Code != 0 {
-		return nil, pgcAPIError(v.Code, v.Message)
+		return nil, pgcAPIError(v.Code, v.Message, anon)
 	}
 	if v.IsPreview != 0 {
-		return nil, fmt.Errorf("%w: 当前仅能试看，请检查登录或会员权限", extractor.ErrAPIDenied)
+		return nil, fmt.Errorf("%w: 当前剧集仅提供试看资源。", extractor.ErrAPIDenied)
 	}
 	switch play.Result.PlayCheck.PlayDetail {
 	case "PLAY_PREVIEW", "preview":
-		return nil, fmt.Errorf("%w: 当前仅能试看，请检查登录或会员权限", extractor.ErrAPIDenied)
+		return nil, fmt.Errorf("%w: 当前剧集仅提供试看资源。", extractor.ErrAPIDenied)
 	case "PLAY_NONE", "none":
 		return nil, fmt.Errorf("%w: 当前剧集不可播放", extractor.ErrAPIDenied)
 	}
 	if len(v.Dash.Video) == 0 {
-		return nil, fmt.Errorf("%w: 未返回可用 DASH 视频（可能受权限或地区限制）", extractor.ErrUnsupportedMedia)
+		return nil, fmt.Errorf("%w: 当前未返回支持的 DASH 视频资源", extractor.ErrUnsupportedMedia)
 	}
 	appendDASH(media, v.Dash)
 	return media, nil
 }
 
-func pgcAPIError(code int, message string) error {
+func pgcAPIError(code int, message string, anon bool) error {
 	if code == -101 {
+		if anon {
+			return fmt.Errorf("%w: 番剧需要登录 (%d)", extractor.ErrAPIDenied, code)
+		}
 		return fmt.Errorf("%w: 番剧需要登录 (%d): %s", extractor.ErrCredentialExpired, code, message)
 	}
 	return fmt.Errorf("%w: 番剧接口 (%d): %s", extractor.ErrAPIDenied, code, message)

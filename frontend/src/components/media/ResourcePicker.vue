@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, computed } from "vue";
-import { X } from "@lucide/vue";
+import { SelectRoot, SelectTrigger, SelectValue, SelectPortal, SelectContent, SelectViewport, SelectItem, SelectItemText } from "reka-ui";
+import { X, ChevronDown, LoaderCircle } from "@lucide/vue";
 import VideoQualityGrid from "./VideoQualityGrid.vue";
 import AudioQualityGrid from "./AudioQualityGrid.vue";
 import AudioSelector from "./AudioSelector.vue";
@@ -16,6 +17,7 @@ type DownloadMode = { id: string; label: string; enabled: boolean };
 const props = defineProps<{
   mediaInfo: MediaInfoResponse;
   episodes?: Episode[];
+  selectedEpisodeURL?: string;
   episodeBusy?: boolean;
   previewMap: Record<string, string>;
 
@@ -36,6 +38,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   (e: "close"): void;
+  (e: "retryEpisode"): void;
   (e: "selectEpisode", url: string): void;
   (e: "startDownload", mode: string, format: string): void;
 
@@ -94,7 +97,7 @@ const startDownload = () => {
 
 <template>
   <div class="modal-overlay">
-    <div class="resource-modal" :class="{ 'is-media': !isImages }">
+    <div class="resource-modal" :class="{ 'is-media': !isImages, 'is-pgc': !!episodes?.length || !!mediaInfo.seasonTitle }">
       <div class="rmodal-header">
         <h3>选择资源</h3>
         <button class="icon-btn" aria-label="关闭" @click="emit('close')">
@@ -106,14 +109,24 @@ const startDownload = () => {
         <p v-if="mediaInfo.episodeTitle" class="episode-title">{{ mediaInfo.title }}</p>
         <p v-if="parseError" class="error-msg" role="alert">{{ parseError }}</p>
 
-        <label v-if="episodes?.length" class="episode-selector">
+        <div v-if="episodes?.length" class="episode-selector">
           <span>剧集</span>
-          <select :key="`${mediaInfo.sourceUrl}:${episodeBusy}`" :value="mediaInfo.episodeTitle ? mediaInfo.sourceUrl : ''" :disabled="episodeBusy || downloadBusy"
-            @change="emit('selectEpisode', ($event.target as HTMLSelectElement).value)">
-            <option value="" disabled>选择剧集</option>
-            <option v-for="episode in episodes" :key="episode.id" :value="episode.url">{{ episode.title }}</option>
-          </select>
-        </label>
+          <SelectRoot :modelValue="selectedEpisodeURL || undefined" :disabled="downloadBusy"
+            @update:modelValue="(value) => value && emit('selectEpisode', String(value))">
+            <SelectTrigger class="episode-trigger" aria-label="剧集">
+              <SelectValue placeholder="选择剧集" /><ChevronDown :size="16" />
+            </SelectTrigger>
+            <SelectPortal><SelectContent class="episode-menu" position="popper" :sideOffset="6">
+              <SelectViewport class="episode-viewport">
+                <SelectItem v-for="episode in episodes" :key="episode.id" :value="episode.url" class="episode-item">
+                  <SelectItemText>{{ episode.title }}</SelectItemText>
+                </SelectItem>
+              </SelectViewport>
+            </SelectContent></SelectPortal>
+          </SelectRoot>
+        </div>
+        <div v-if="episodeBusy" class="episode-status" role="status"><LoaderCircle class="episode-spinner" :size="22" aria-label="正在解析" /></div>
+        <button v-else-if="parseError && selectedEpisodeURL" class="btn-secondary episode-retry" @click="emit('retryEpisode')">重试</button>
         <template v-if="!isImages && (mediaInfo.videoStreams?.length || mediaInfo.audioStreams?.length)">
           <DownloadModeSelector
             class="mode-selector"
@@ -178,7 +191,7 @@ const startDownload = () => {
 <style scoped>
 .episode-title { margin: 0; font-size: 14px; color: var(--text-main); flex-shrink: 0; }
 .episode-selector { display: flex; align-items: center; gap: 12px; flex-shrink: 0; }
-.episode-selector select { flex: 1; min-width: 0; padding: 8px; border: 1px solid var(--border); border-radius: 8px; background: var(--input-bg); color: var(--text-main); font: inherit; }
+.episode-trigger { display: flex; justify-content: space-between; align-items: center; cursor: pointer; flex: 1; min-width: 0; padding: 8px; border: 1px solid var(--border); border-radius: 8px; background: var(--input-bg); color: var(--text-main); font: inherit; }
 .resource-modal {
   background: var(--card-bg);
   border-radius: 16px;
@@ -211,6 +224,17 @@ const startDownload = () => {
   font-size: 18px;
 }
 
+.resource-modal.is-pgc { height: min(780px, calc(100vh - 40px)); max-height: calc(100vh - 40px); }
+.is-pgc .rmodal-body { overflow-y: auto; }
+.is-pgc .resource-content { flex: 1 0 245px; overflow: visible; }
+.episode-status { display: flex; justify-content: center; padding: 32px; }
+.episode-spinner { animation: episode-spin 1s linear infinite; }
+@keyframes episode-spin { to { transform: rotate(360deg); } }
+.episode-retry { align-self: center; padding: 8px 18px; border: 1px solid var(--border); border-radius: 8px; background: var(--input-bg); color: var(--text-main); font: inherit; cursor: pointer; }
+.episode-menu { z-index: 1000; background: var(--card-bg); color: var(--text-main); border: 1px solid var(--border); border-radius: 8px; min-width: var(--reka-select-trigger-width); max-width: 85vw; box-shadow: 0 8px 24px var(--shadow-color); }
+.episode-viewport { max-height: min(320px, var(--reka-select-content-available-height)); padding: 4px; overflow-y: auto; }
+.episode-item { padding: 9px 12px; border-radius: 5px; cursor: pointer; outline: none; }
+.episode-item[data-highlighted], .episode-item[data-state="checked"] { background: var(--input-bg); }
 .rmodal-body {
   flex: 1;
   min-height: 0;

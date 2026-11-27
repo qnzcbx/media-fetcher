@@ -171,7 +171,15 @@ func (c *BilibiliQRLoginCoordinator) PollStatus(ctx context.Context, qrcodeKey s
 		if reply.Data.URL != "" {
 			if u, err := url.Parse(reply.Data.URL); err == nil {
 				q := u.Query()
-				if sess := q.Get("SESSDATA"); sess != "" {
+				hasSession := false
+				for _, cookie := range cookies {
+					if cookie.Name == "SESSDATA" {
+						hasSession = true
+						break
+					}
+				}
+				// 优先使用原始 Set-Cookie，URL 查询解析会解码百分号。
+				if sess := loginSessionValue(u); sess != "" && !hasSession {
 					cookies = append(cookies, &http.Cookie{
 						Name:     "SESSDATA",
 						Value:    sess,
@@ -300,4 +308,15 @@ func (c *BilibiliQRLoginCoordinator) verifyNav(ctx context.Context, client *http
 	}
 
 	return reply.Data.Uname, reply.Data.Face, reply.Data.Mid, true, metadata, nil
+}
+
+// loginSessionValue 保留平台给出的 Cookie 转义形式，不做查询参数解码或二次编码。
+func loginSessionValue(u *url.URL) string {
+	for _, pair := range strings.Split(u.RawQuery, "&") {
+		key, value, ok := strings.Cut(pair, "=")
+		if ok && key == "SESSDATA" {
+			return value
+		}
+	}
+	return ""
 }
