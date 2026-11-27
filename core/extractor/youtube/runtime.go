@@ -10,6 +10,7 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -174,12 +175,12 @@ func findJSRuntime(ctx context.Context, cfg Config) (JSRuntimeInfo, error) {
 		}
 	}
 
-	// 1 & 2. 应用自带与专用工具目录优先找轻量的 QuickJS-NG (qjs)，其次 deno / node
+	// 1 & 2. 应用自带与专用工具目录优先选择 JIT 运行时（Node / Deno，实测解挑战显著快于 QuickJS），其次 QuickJS-NG
 	for _, dir := range trustedToolDirs(cfg.ExtraToolDirs) {
 		for _, item := range []struct{ kind, bin string }{
-			{"quickjs", exeName("qjs")},
-			{"deno", exeName("deno")},
 			{"node", exeName("node")},
+			{"deno", exeName("deno")},
+			{"quickjs", exeName("qjs")},
 		} {
 			p := filepath.Join(dir, item.bin)
 			if isRegularFile(p) {
@@ -206,11 +207,11 @@ func findJSRuntime(ctx context.Context, cfg Config) (JSRuntimeInfo, error) {
 		}
 	}
 
-	// 4. 系统 PATH 中的兼容运行时
+	// 4. 系统 PATH 中的兼容运行时（优先 Node / Deno JIT 运行时）
 	for _, item := range []struct{ kind, bin string }{
-		{"quickjs", "qjs"},
-		{"deno", "deno"},
 		{"node", "node"},
+		{"deno", "deno"},
+		{"quickjs", "qjs"},
 	} {
 		if p, err := exec.LookPath(item.bin); err == nil {
 			add(item.kind, p)
@@ -240,7 +241,49 @@ func inferJSRuntimeKind(path string) string {
 	}
 }
 
+type jsVersionCacheEntry struct {
+	modTimeUnix int64
+	size        int64
+	version     string
+	ok          bool
+}
+
+var (
+	jsVersionCacheMu sync.Mutex
+	jsVersionCache   = map[string]jsVersionCacheEntry{}
+)
+
 func verifyJSRuntimeVersion(ctx context.Context, kind, binPath string) (string, bool) {
+	clean := filepath.Clean(binPath)
+	cacheKey := kind + ":" + strings.ToLower(clean)
+	if info, err := os.Stat(clean); err == nil && !info.IsDir() {
+		jsVersionCacheMu.Lock()
+		if cached, hit := jsVersionCache[cacheKey]; hit && cached.modTimeUnix == info.ModTime().UnixNano() && cached.size == info.Size() {
+			jsVersionCacheMu.Unlock()
+			return cached.version, cached.ok
+		}
+		jsVersionCacheMu.Unlock()
+
+		vCtx, cancel := context.WithTimeout(ctx, 4*time.Second)
+		defer cancel()
+		cmd := exec.CommandContext(vCtx, binPath, "--version")
+		hideWindow(cmd)
+		out, runErr := cmd.CombinedOutput()
+		if runErr != nil {
+			return "", false
+		}
+		ver, ok := parseAndCheckJSVersion(kind, string(out))
+		jsVersionCacheMu.Lock()
+		jsVersionCache[cacheKey] = jsVersionCacheEntry{
+			modTimeUnix: info.ModTime().UnixNano(),
+			size:        info.Size(),
+			version:     ver,
+			ok:          ok,
+		}
+		jsVersionCacheMu.Unlock()
+		return ver, ok
+	}
+
 	vCtx, cancel := context.WithTimeout(ctx, 4*time.Second)
 	defer cancel()
 	cmd := exec.CommandContext(vCtx, binPath, "--version")

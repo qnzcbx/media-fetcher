@@ -37,10 +37,14 @@ type DesktopService struct {
 	downloadMu     sync.Mutex
 	cancelDownload context.CancelFunc
 	activeDownload bool
-	// 预览缓存
+	// 预览缓存与短 TTL 内存解析快照（绝不持久化签名 URL）
 	previewCache sync.Map
 	previewMu    sync.Mutex
 	previewKeys  []string
+	snapshotMu   sync.Mutex
+	snapshot     *extractSnapshot
+	snapshotTTL  time.Duration
+	snapshotNow  func() time.Time
 	historyDir   string
 	historyMu    sync.Mutex
 	fileMu       sync.Mutex
@@ -94,6 +98,7 @@ type MediaInfoResponse struct {
 }
 
 func (s *DesktopService) Extract(urlStr string, accountID string) (MediaInfoResponse, error) {
+	s.ClearExtractSnapshot()
 	ext, err := s.registry.Find(urlStr)
 	if err != nil {
 		return MediaInfoResponse{}, fmt.Errorf("找不到对应的解析器: %v", err)
@@ -111,6 +116,7 @@ func (s *DesktopService) Extract(urlStr string, accountID string) (MediaInfoResp
 	if err != nil {
 		return MediaInfoResponse{}, fmt.Errorf("解析失败: %v", err)
 	}
+	s.saveExtractSnapshot(urlStr, accountID, media)
 
 	return MediaInfoResponse{
 		Episodes: media.Episodes, SourceURL: media.SourceURL, SeasonTitle: media.SeasonTitle, EpisodeTitle: media.EpisodeTitle,
@@ -290,6 +296,7 @@ type DownloadParams struct {
 	PreviewURLs   []string
 	CoverPreview  string
 	previews      map[string]string
+	snapshot      *extractor.MediaInfo
 	TaskID        string
 	URL           string
 	AccountID     string
@@ -351,6 +358,7 @@ func (s *DesktopService) StartDownload(params DownloadParams) error {
 		s.downloadMu.Unlock()
 		return err
 	}
+	params.snapshot = s.lookupExtractSnapshot(ext.SiteID(), params.URL, params.AccountID)
 	finish := s.useAccount(ext.SiteID(), params.AccountID)
 	ctx, cancel := context.WithCancel(context.Background())
 	s.cancelDownload = cancel
@@ -400,17 +408,93 @@ func (s *DesktopService) CancelDownload() {
 	}
 }
 
+func selectMediaTracks(media *extractor.MediaInfo, params DownloadParams) (*extractor.VideoStream, *extractor.AudioStream, error) {
+	var targetVideo *extractor.VideoStream
+	var targetAudio *extractor.AudioStream
+
+	if params.VideoID >= 0 || params.VideoKey != "" {
+		for i := range media.VideoStreams {
+			vs := media.VideoStreams[i]
+			matched := false
+			if params.VideoKey != "" && vs.StreamKey != "" {
+				matched = vs.StreamKey == params.VideoKey && (params.VideoCodec == "" || vs.Codec == params.VideoCodec)
+			} else if params.VideoID >= 0 {
+				matched = vs.ID == params.VideoID && vs.Codec == params.VideoCodec
+			}
+			if matched {
+				if targetVideo != nil {
+					return nil, nil, fmt.Errorf("视频轨道标识存在冲突，请重新解析")
+				}
+				vCopy := vs
+				targetVideo = &vCopy
+			}
+		}
+		if targetVideo == nil {
+			return nil, nil, fmt.Errorf("所选视频画质或编码已失效，请重新解析")
+		}
+	}
+
+	if params.AudioID >= 0 || params.AudioKey != "" {
+		for i := range media.AudioStreams {
+			as := media.AudioStreams[i]
+			matched := false
+			if params.AudioKey != "" && as.StreamKey != "" {
+				matched = as.StreamKey == params.AudioKey
+			} else if params.AudioID >= 0 {
+				matched = as.ID == params.AudioID && (params.AudioKey == "" || params.AudioKey == strconv.Itoa(as.ID)+"|"+as.Codec+"|"+as.Kind)
+			}
+			if matched {
+				if targetAudio != nil {
+					return nil, nil, fmt.Errorf("音轨标识存在冲突，请重新解析")
+				}
+				aCopy := as
+				targetAudio = &aCopy
+			}
+		}
+		if targetAudio == nil {
+			return nil, nil, fmt.Errorf("所选音质已失效，请重新解析")
+		}
+	}
+
+	return targetVideo, targetAudio, nil
+}
+
 func (s *DesktopService) doDownload(ctx context.Context, params DownloadParams) error {
 	ext, err := s.registry.Find(params.URL)
 	if err != nil {
 		return fmt.Errorf("找不到解析器: %v", err)
 	}
 
-	media, err := ext.Extract(ctx, params.URL, extractor.ExtractOptions{
-		AccountID: params.AccountID,
-	})
-	if err != nil {
-		return fmt.Errorf("解析失败: %v", err)
+	var media *extractor.MediaInfo
+	usedSnapshot := false
+	if params.Mode != "images" {
+		snap := params.snapshot
+		if snap == nil {
+			snap = s.lookupExtractSnapshot(ext.SiteID(), params.URL, params.AccountID)
+		}
+		if snap != nil {
+			snapImagesOnly := len(snap.Images) > 0 && len(snap.VideoStreams) == 0 && len(snap.AudioStreams) == 0
+			if !snapImagesOnly {
+				if tv, ta, selErr := selectMediaTracks(snap, params); selErr == nil {
+					now := s.now()
+					expiring := (tv != nil && isSignedURLExpiringSoon(tv.URL, now)) ||
+						(ta != nil && isSignedURLExpiringSoon(ta.URL, now))
+					if !expiring {
+						media = snap
+						usedSnapshot = true
+					}
+				}
+			}
+		}
+	}
+
+	if media == nil {
+		media, err = ext.Extract(ctx, params.URL, extractor.ExtractOptions{
+			AccountID: params.AccountID,
+		})
+		if err != nil {
+			return fmt.Errorf("解析失败: %v", err)
+		}
 	}
 
 	imagesOnly := len(media.Images) > 0 && len(media.VideoStreams) == 0 && len(media.AudioStreams) == 0
@@ -570,123 +654,122 @@ func (s *DesktopService) doDownload(ctx context.Context, params DownloadParams) 
 	}
 
 	var downloadedVideo, downloadedAudio string
+	var targetVideo *extractor.VideoStream
+	var targetAudio *extractor.AudioStream
 	title := downloader.SanitizeFilename(media.Title)
 	if title == "media_download" {
 		title = media.ID
 	}
 
-	var targetVideo *extractor.VideoStream
-	var targetAudio *extractor.AudioStream
+	for attempt := 0; attempt < 2; attempt++ {
+		targetVideo, targetAudio, err = selectMediaTracks(media, params)
+		if err != nil {
+			return err
+		}
 
-	if params.VideoID >= 0 || params.VideoKey != "" {
-		for i := range media.VideoStreams {
-			vs := media.VideoStreams[i]
-			matched := false
-			if params.VideoKey != "" && vs.StreamKey != "" {
-				matched = vs.StreamKey == params.VideoKey && (params.VideoCodec == "" || vs.Codec == params.VideoCodec)
-			} else if params.VideoID >= 0 {
-				matched = vs.ID == params.VideoID && vs.Codec == params.VideoCodec
-			}
-			if matched {
-				if targetVideo != nil {
-					return fmt.Errorf("视频轨道标识存在冲突，请重新解析")
-				}
-				vCopy := vs
-				targetVideo = &vCopy
-			}
-		}
-		if targetVideo == nil {
-			return fmt.Errorf("所选视频画质或编码已失效，请重新解析")
-		}
-	}
-
-	if params.AudioID >= 0 || params.AudioKey != "" {
-		for i := range media.AudioStreams {
-			as := media.AudioStreams[i]
-			matched := false
-			if params.AudioKey != "" && as.StreamKey != "" {
-				matched = as.StreamKey == params.AudioKey
-			} else if params.AudioID >= 0 {
-				matched = as.ID == params.AudioID && (params.AudioKey == "" || params.AudioKey == strconv.Itoa(as.ID)+"|"+as.Codec+"|"+as.Kind)
-			}
-			if matched {
-				if targetAudio != nil {
-					return fmt.Errorf("音轨标识存在冲突，请重新解析")
-				}
-				aCopy := as
-				targetAudio = &aCopy
-			}
-		}
-		if targetAudio == nil {
-			return fmt.Errorf("所选音质已失效，请重新解析")
-		}
-	}
-
-	aggregate := trackProgress{}
-	completeMode := targetVideo != nil && targetAudio != nil
-	if completeMode {
-		aggregate.total[0] = probeTrackSize(ctx, client, targetVideo.URL, targetVideo.Size, targetVideo.Headers)
-		aggregate.total[1] = probeTrackSize(ctx, client, targetAudio.URL, targetAudio.Size, targetAudio.Headers)
-	}
-	progress := func(track int, stage string, downloaded, total int64) {
-		overallDownloaded, overallTotal := downloaded, total
+		aggregate := trackProgress{}
+		completeMode := targetVideo != nil && targetAudio != nil
 		if completeMode {
-			overallDownloaded, overallTotal = aggregate.update(track, downloaded, total)
+			aggregate.total[0] = probeTrackSize(ctx, client, targetVideo.URL, targetVideo.Size, targetVideo.Headers)
+			aggregate.total[1] = probeTrackSize(ctx, client, targetAudio.URL, targetAudio.Size, targetAudio.Headers)
 		}
-		s.emitDownload(params.TaskID, "media", ProgressInfo{Stage: stage, Downloaded: downloaded, Total: total, OverallDownloaded: overallDownloaded, OverallTotal: overallTotal})
-	}
-
-	if targetVideo != nil {
-		opts := downloader.DownloadOptions{
-			OutputDir:    workDir,
-			Filename:     "video.tmp",
-			Headers:      targetVideo.Headers,
-			ChunkSize:    targetVideo.ChunkSize,
-			ExpectedSize: targetVideo.Size,
-			OnProgress:   func(downloaded, total int64) { progress(0, "video", downloaded, total) },
+		progress := func(track int, stage string, downloaded, total int64) {
+			overallDownloaded, overallTotal := downloaded, total
+			if completeMode {
+				overallDownloaded, overallTotal = aggregate.update(track, downloaded, total)
+			}
+			s.emitDownload(params.TaskID, "media", ProgressInfo{Stage: stage, Downloaded: downloaded, Total: total, OverallDownloaded: overallDownloaded, OverallTotal: overallTotal})
 		}
 
-		var dlErr error
-		downloadedVideo, dlErr = d.Download(ctx, nil, targetVideo.URL, opts)
-		if dlErr != nil {
-			if len(targetVideo.BackupURLs) > 0 {
-				for _, backupURL := range targetVideo.BackupURLs {
-					downloadedVideo, dlErr = d.Download(ctx, nil, backupURL, opts)
-					if dlErr == nil {
-						break
+		downloadedVideo, downloadedAudio = "", ""
+		var trackErr error
+		var errPrefix string
+
+		if targetVideo != nil {
+			opts := downloader.DownloadOptions{
+				OutputDir:    workDir,
+				Filename:     "video.tmp",
+				Headers:      targetVideo.Headers,
+				ChunkSize:    targetVideo.ChunkSize,
+				ExpectedSize: targetVideo.Size,
+				OnProgress:   func(downloaded, total int64) { progress(0, "video", downloaded, total) },
+			}
+
+			var dlErr error
+			downloadedVideo, dlErr = d.Download(ctx, nil, targetVideo.URL, opts)
+			if dlErr != nil {
+				if len(targetVideo.BackupURLs) > 0 {
+					for _, backupURL := range targetVideo.BackupURLs {
+						downloadedVideo, dlErr = d.Download(ctx, nil, backupURL, opts)
+						if dlErr == nil {
+							break
+						}
 					}
 				}
-			}
-			if dlErr != nil {
-				return fmt.Errorf("视频下载失败: %v", dlErr)
-			}
-		}
-	}
-
-	if targetAudio != nil {
-		opts := downloader.DownloadOptions{
-			OutputDir:    workDir,
-			Filename:     "audio.tmp",
-			Headers:      targetAudio.Headers,
-			ChunkSize:    targetAudio.ChunkSize,
-			ExpectedSize: targetAudio.Size,
-			OnProgress:   func(downloaded, total int64) { progress(1, "audio", downloaded, total) },
-		}
-		var dlErr error
-		downloadedAudio, dlErr = d.Download(ctx, nil, targetAudio.URL, opts)
-		if dlErr != nil {
-			if len(targetAudio.BackupURLs) > 0 {
-				for _, backupURL := range targetAudio.BackupURLs {
-					downloadedAudio, dlErr = d.Download(ctx, nil, backupURL, opts)
-					if dlErr == nil {
-						break
-					}
+				if dlErr != nil {
+					trackErr = dlErr
+					errPrefix = "视频下载失败"
 				}
 			}
+		}
+
+		if trackErr == nil && targetAudio != nil {
+			opts := downloader.DownloadOptions{
+				OutputDir:    workDir,
+				Filename:     "audio.tmp",
+				Headers:      targetAudio.Headers,
+				ChunkSize:    targetAudio.ChunkSize,
+				ExpectedSize: targetAudio.Size,
+				OnProgress:   func(downloaded, total int64) { progress(1, "audio", downloaded, total) },
+			}
+			var dlErr error
+			downloadedAudio, dlErr = d.Download(ctx, nil, targetAudio.URL, opts)
 			if dlErr != nil {
-				return fmt.Errorf("音频下载失败: %v", dlErr)
+				if len(targetAudio.BackupURLs) > 0 {
+					for _, backupURL := range targetAudio.BackupURLs {
+						downloadedAudio, dlErr = d.Download(ctx, nil, backupURL, opts)
+						if dlErr == nil {
+							break
+						}
+					}
+				}
+				if dlErr != nil {
+					trackErr = dlErr
+					errPrefix = "音频下载失败"
+				}
 			}
 		}
+
+		if trackErr == nil {
+			break
+		}
+
+		// 若本次复用了短 TTL 内存快照且远端拒绝/区间异常，则失效快照并单次回退重新解析；
+		// 重新解析后若仍失败（如持续 403 访问受限），直接返回真实错误，绝不把所有 403 视作 URL 过期。
+		if usedSnapshot && attempt == 0 && ctx.Err() == nil && shouldRetryWithFreshExtract(trackErr) {
+			s.ClearExtractSnapshot()
+			_ = os.Remove(filepath.Join(workDir, "video.tmp"))
+			_ = os.Remove(filepath.Join(workDir, "audio.tmp"))
+			fresh, freshErr := ext.Extract(ctx, params.URL, extractor.ExtractOptions{
+				AccountID: params.AccountID,
+			})
+			if freshErr != nil {
+				return fmt.Errorf("解析失败: %v", freshErr)
+			}
+			freshImagesOnly := len(fresh.Images) > 0 && len(fresh.VideoStreams) == 0 && len(fresh.AudioStreams) == 0
+			if (params.Mode == "images") != freshImagesOnly {
+				return errors.New("资源类型已变化，请重新解析")
+			}
+			media = fresh
+			usedSnapshot = false
+			title = downloader.SanitizeFilename(media.Title)
+			if title == "media_download" {
+				title = media.ID
+			}
+			continue
+		}
+
+		return fmt.Errorf("%s: %v", errPrefix, trackErr)
 	}
 
 	format, kind, resourceID := "mp4", "video", params.VideoID

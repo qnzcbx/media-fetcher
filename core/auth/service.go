@@ -31,11 +31,19 @@ var (
 
 // CredentialService 统一管理各站点的用户账号、会话生命周期、加密存储与隔离的 HTTP 客户端。
 type CredentialService struct {
-	mu         sync.RWMutex
-	storageDir string
-	vault      vault.Vault
-	accounts   map[string]*Account                       // 键: siteID + ":" + accountID
-	jars       map[string]*cookiejar.PersistentCookieJar // 键: siteID + ":" + accountID
+	mu            sync.RWMutex
+	storageDir    string
+	vault         vault.Vault
+	baseTransport *http.Transport
+	accounts      map[string]*Account                       // 键: siteID + ":" + accountID
+	jars          map[string]*cookiejar.PersistentCookieJar // 键: siteID + ":" + accountID
+}
+
+func (s *CredentialService) transport() *http.Transport {
+	if s != nil && s.baseTransport != nil {
+		return s.baseTransport
+	}
+	return newBaseTransport()
 }
 
 // isHostTrustedForSite 判断主机名是否处于指定站点的信任边界内。
@@ -164,10 +172,11 @@ func NewCredentialService(storageDir string, v vault.Vault) (*CredentialService,
 	}
 
 	s := &CredentialService{
-		storageDir: storageDir,
-		vault:      v,
-		accounts:   make(map[string]*Account),
-		jars:       make(map[string]*cookiejar.PersistentCookieJar),
+		storageDir:    storageDir,
+		vault:         v,
+		baseTransport: newBaseTransport(),
+		accounts:      make(map[string]*Account),
+		jars:          make(map[string]*cookiejar.PersistentCookieJar),
 	}
 
 	if err := s.loadAccountsMeta(); err != nil {
@@ -381,7 +390,7 @@ func (s *CredentialService) GetClient(siteID, accountID string) (*http.Client, e
 		Jar:     jar,
 		Timeout: 30 * time.Second,
 		Transport: &revocableTransport{
-			base:   http.DefaultTransport,
+			base:   s.transport(),
 			jar:    jar,
 			siteID: siteID,
 		},
@@ -404,8 +413,9 @@ func (s *CredentialService) GetClient(siteID, accountID string) (*http.Client, e
 func (s *CredentialService) GetAnonymousClient(siteID string) *http.Client {
 	anonJar := cookiejar.New(siteID, "anonymous")
 	return &http.Client{
-		Jar:     anonJar,
-		Timeout: 30 * time.Second,
+		Jar:       anonJar,
+		Timeout:   30 * time.Second,
+		Transport: s.transport(),
 		CheckRedirect: func(req *http.Request, via []*http.Request) error {
 			if len(via) >= 10 {
 				return errors.New("auth: 重定向次数过多 (超过10次)")

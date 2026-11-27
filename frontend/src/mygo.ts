@@ -179,6 +179,8 @@ export interface Window {}
 
 export const DesktopService = {
   cancelDownload: bind<[], void>("DesktopService.CancelDownload", () => []),
+  /** ClearExtractSnapshot 主动清除当前内存解析快照（关闭资源选择弹窗或切换资源时调用）。 */
+  clearExtractSnapshot: bind<[], void>("DesktopService.ClearExtractSnapshot", () => []),
   /** DownloadDuration 按需补读旧记录，工具或文件不可用时仍保留历史。 */
   downloadDuration: bind<[string], number>("DesktopService.DownloadDuration", (id: string) => [id]),
   downloadHistory: bind<[], DownloadRecord[]>("DesktopService.DownloadHistory", () => []),

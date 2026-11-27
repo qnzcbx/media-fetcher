@@ -34,6 +34,7 @@ func (s *DesktopService) LogoutAccount(siteID, accountID string) error {
 	if s.accountUses[siteID+":"+accountID] > 0 {
 		return errors.New("该账号正在解析或下载，请等待任务结束后退出")
 	}
+	s.invalidateExtractSnapshotForAccount(siteID, accountID)
 	if err := s.credService.DeleteAccount(siteID, accountID); err != nil {
 		return errors.New("退出失败，未能完整清理本地凭证，请重试")
 	}

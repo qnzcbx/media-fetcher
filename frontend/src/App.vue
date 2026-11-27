@@ -13,7 +13,7 @@ import DownloadGalleryDrawer from "./components/download/DownloadGalleryDrawer.v
 import SettingsDrawer from "./components/settings/SettingsDrawer.vue";
 import DownloadsView from "./views/DownloadsView.vue";
 
-import type { Episode, MediaInfoResponse, SafeAccount } from "./mygo";
+import { DesktopService, type Episode, type MediaInfoResponse, type SafeAccount } from "./mygo";
 import { canUnlock, resolveParseTarget, useCredentials } from "./composables/useCredentials";
 import { useMediaParser } from "./composables/useMediaParser";
 import { useMediaPreview } from "./composables/useMediaPreview";
@@ -150,6 +150,7 @@ const closeResourcePicker = () => {
   snapshot = undefined;
   episodeOptions.value = [];
   clearMediaInfo();
+  void DesktopService.clearExtractSnapshot?.();
 };
 
 const handleEpisode = async (episodeURL: string) => {
