@@ -14,6 +14,7 @@ import {
 } from "reka-ui";
 
 defineProps<{
+  action?: { title: string; name: string; description: string; confirmLabel: string };
   confirmation?: {
     ids: string[];
     names: string[];
@@ -30,23 +31,24 @@ const checkboxId = useId();
 </script>
 
 <template>
-  <DialogRoot :open="!!confirmation" @update:open="(open) => !open && !busy && emit('cancel')">
+  <DialogRoot :open="!!confirmation || !!action" @update:open="(open) => !open && !busy && emit('cancel')">
     <DialogPortal>
       <DialogOverlay class="delete-overlay" />
       <DialogContent
         class="delete-dialog"
+        :class="{ 'logout-dialog': !!action }"
         @open-auto-focus.prevent="cancel?.focus()"
         @escape-key-down.stop
       >
-        <DialogTitle>删除</DialogTitle>
+        <DialogTitle class="dialog-title">{{ action?.title ?? "删除" }}</DialogTitle>
         <p class="filename">
           {{
-            confirmation?.names.length === 1
+            action ? action.name : confirmation?.names.length === 1
               ? confirmation.names[0]
               : "已选择 " + (confirmation?.ids.length ?? 0) + " 项"
           }}
         </p>
-        <div class="file-option">
+        <div v-if="confirmation" class="file-option">
           <CheckboxRoot
             :id="checkboxId"
             class="file-checkbox"
@@ -66,7 +68,7 @@ const checkboxId = useId();
         </div>
 
         <DialogDescription class="delete-hint">
-          {{ confirmation?.deleteFiles ? "文件将移至回收站。" : "仅移除下载记录，保留本地文件。" }}
+          {{ action ? action.description : confirmation?.deleteFiles ? "文件将移至回收站。" : "仅移除下载记录，保留本地文件。" }}
         </DialogDescription>
         <p v-if="confirmation?.deleteFiles && confirmation.skipped">
           跳过 {{ confirmation.skipped }} 项不可回收的记录。
@@ -76,7 +78,7 @@ const checkboxId = useId();
           <button ref="cancel" class="btn-cancel" :disabled="busy" @click="emit('cancel')">
             取消
           </button>
-          <button class="delete" :disabled="busy" @click="emit('confirm')">删除</button>
+          <button class="delete" :disabled="busy" @click="emit('confirm')">{{ action?.confirmLabel ?? "删除" }}</button>
         </div>
       </DialogContent>
     </DialogPortal>
@@ -106,6 +108,9 @@ const checkboxId = useId();
   z-index: var(--layer-confirm);
 }
 
+.dialog-title { font-size: 18px; line-height: 1.4; margin: 0 0 12px; text-align: left; }
+.logout-dialog { text-align: left; }
+.logout-dialog .delete-hint { margin-left: 0; }
 .filename {
   overflow-wrap: anywhere;
 }

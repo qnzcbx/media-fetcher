@@ -26,6 +26,8 @@ import (
 )
 
 type DesktopService struct {
+	accountMu   sync.Mutex
+	accountUses map[string]int
 	credService *auth.CredentialService
 	registry    *extractor.Registry
 	win         *mygo.Window
@@ -95,6 +97,8 @@ func (s *DesktopService) Extract(urlStr string, accountID string) (MediaInfoResp
 		return MediaInfoResponse{}, fmt.Errorf("找不到对应的解析器: %v", err)
 	}
 
+	finish := s.useAccount(ext.SiteID(), accountID)
+	defer finish()
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
@@ -338,12 +342,19 @@ func (s *DesktopService) StartDownload(params DownloadParams) error {
 		s.downloadMu.Unlock()
 		return errors.New("无效的下载任务标识")
 	}
+	ext, err := s.registry.Find(params.URL)
+	if err != nil {
+		s.downloadMu.Unlock()
+		return err
+	}
+	finish := s.useAccount(ext.SiteID(), params.AccountID)
 	ctx, cancel := context.WithCancel(context.Background())
 	s.cancelDownload = cancel
 	s.activeDownload = true
 	s.downloadMu.Unlock()
 
 	go func() {
+		defer finish()
 		err := s.doDownload(ctx, params)
 		stage, message := "finished", ""
 		if err != nil {

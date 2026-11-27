@@ -38,6 +38,22 @@ try {
     assert.equal(state.getActiveAccountId(site), "");
   }
 
+  let savedAccounts = [saved];
+  let deletionFails = true;
+  const logoutState = createCredentialState(async () => savedAccounts, async (site, id) => {
+    assert.equal(site, saved.siteId);
+    assert.equal(id, saved.accountId);
+    if (deletionFails) throw new Error("退出失败");
+    savedAccounts = [];
+  });
+  await logoutState.ensureInitialized();
+  await assert.rejects(logoutState.logout(saved), /退出失败/);
+  assert.equal(logoutState.accounts.value.length, 1);
+  deletionFails = false;
+  await logoutState.logout(saved);
+  assert.equal(logoutState.accounts.value.length, 0);
+  assert.equal(logoutState.getActiveAccountId("bilibili"), "");
+
   const link = "https://www.bilibili.com/video/BV1xx411c7mD?p=2";
   const target = resolveParseTarget(link, state.getActiveAccountId);
   assert.deepEqual(target, { url: link, siteId: "bilibili", accountId: "test-account" });

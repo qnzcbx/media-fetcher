@@ -1,5 +1,5 @@
 import { ref, onUnmounted } from "vue";
-import { getAccounts, generateBiliQRCode, pollBiliQRCode } from "../api/credential";
+import { getAccounts, logoutAccount, generateBiliQRCode, pollBiliQRCode } from "../api/credential";
 import type { MediaInfoResponse, SafeAccount } from "../mygo";
 import { extractSupportedURL, getSiteIdFromURL } from "../utils/url";
 
@@ -7,7 +7,7 @@ export const isValidAccount = (account: SafeAccount) => account.status === "acti
 export const findActiveAccount = (accounts: SafeAccount[], siteId: string) =>
   accounts.find((account) => account.siteId === siteId && account.isActive && isValidAccount(account));
 
-export function createCredentialState(query: typeof getAccounts) {
+export function createCredentialState(query: typeof getAccounts, remove = logoutAccount) {
   const accounts = ref<SafeAccount[]>([]);
   const isInitialized = ref(false);
   const credentialError = ref("");
@@ -24,11 +24,25 @@ export function createCredentialState(query: typeof getAccounts) {
     return false;
   }).finally(() => { pending = undefined; });
 
+  const logout = async (account: SafeAccount) => {
+    if (pending) await pending;
+    try {
+      await remove(account.siteId, account.accountId);
+    } catch (error) {
+      // 删除失败也可能已撤销内存会话，刷新后仍明确返回失败。
+      await fetchAccounts();
+      throw error;
+    }
+    accounts.value = accounts.value.filter((item) => item.siteId !== account.siteId || item.accountId !== account.accountId);
+    const refreshed = await fetchAccounts();
+    if (!refreshed) throw new Error("本地凭证已退出，但账号列表刷新失败，请重新打开凭证管理。");
+  };
+
   const ensureInitialized = () => pending ?? (isInitialized.value ? Promise.resolve(true) : fetchAccounts());
   const getActiveAccountId = (siteId: string) =>
     isInitialized.value ? findActiveAccount(accounts.value, siteId)?.accountId ?? "" : "";
 
-  return { accounts, isInitialized, credentialError, fetchAccounts, ensureInitialized, getActiveAccountId };
+  return { logout, accounts, isInitialized, credentialError, fetchAccounts, ensureInitialized, getActiveAccountId };
 }
 
 export function resolveParseTarget(input: string, getAccountId: (site: string) => string) {

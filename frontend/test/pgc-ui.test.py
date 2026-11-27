@@ -5,6 +5,7 @@ ROOT = Path(__file__).resolve().parents[2]
 OUTPUT = ROOT / "notes" / "03.6A.1-screenshots"
 OUTPUT.mkdir(parents=True, exist_ok=True)
 MOCK = r"""
+let loggedIn = true;
 const episodes = [1,2,3].map(id=>({id:String(id),title:id+' 测试剧集',url:'https://www.bilibili.com/bangumi/play/ep'+id+'/'}));
 const base = {siteId:'bilibili',id:'ss1',title:'测试番剧',seasonTitle:'测试番剧',episodeTitle:'',coverUrl:'',isAnonymous:false,usedAccountId:'selected',episodes,videoStreams:[],audioStreams:[],images:[],sourceUrl:'https://www.bilibili.com/bangumi/play/ss1/'};
 export const DesktopService = new Proxy({}, {get(_,key) {
@@ -15,7 +16,8 @@ export const DesktopService = new Proxy({}, {get(_,key) {
    if(url.includes('/ss')) return base;
    return {...base,id:'ep1',sourceUrl:url,episodeTitle:'1 测试剧集',title:'测试番剧 1 测试剧集',videoStreams:[80,64,32].map(id=>({id,quality_label:String(id),codec:'avc1',width:1920,height:1080,bandwidth:100,url:'test'})),audioStreams:[{id:30280,quality:'192Kbps',codec:'mp4a',bandwidth:192000,url:'test'}]};
  };
- if(key==='getAccounts') return async()=>[{siteId:'bilibili',accountId:'selected',status:'active',isActive:true}];
+ if(key==='getAccounts') return async()=>loggedIn ? [{siteId:'bilibili',accountId:'selected',name:'测试账号',status:window.mockExpired?'expired':'active',isActive:true}] : [];
+ if(key==='logoutAccount') return async()=> {if(window.failLogout) throw new Error('退出失败'); loggedIn=false};
  if(key==='validateDownloadDirectory') return async()=> 'C:/test';
  if(key==='startDownload') return async()=> {window.started=(window.started||0)+1};
  return async()=>[];
@@ -64,5 +66,28 @@ with sync_playwright() as p:
  expect(page.locator('.resource-modal')).to_have_count(0)
  expect(page.get_by_role('alert')).to_have_count(0)
  assert page.evaluate('window.started||0')==0
+ page.get_by_role('button',name='凭证管理',exact=True).click()
+ page.get_by_role('button',name='退出此账号',exact=True).click()
+ expect(page.get_by_role('dialog')).to_contain_text('退出后将清除本地登录凭证。')
+ assert page.locator('.dialog-title').evaluate("e=>getComputedStyle(e).fontSize") == '18px'
+ assert page.locator('.logout-dialog .delete-hint').evaluate("e=>getComputedStyle(e).marginLeft") == '0px'
+ page.screenshot(path=str(OUTPUT/'logout-confirmation.png'))
+ page.get_by_role('button',name='取消',exact=True).click()
+ expect(page.get_by_role('button',name='退出此账号',exact=True)).to_be_visible()
+ page.evaluate('window.failLogout=true')
+ page.get_by_role('button',name='退出此账号',exact=True).click()
+ page.get_by_role('button',name='退出',exact=True).click()
+ expect(page.get_by_role('alert')).to_have_text('退出失败')
+ page.evaluate('window.failLogout=false')
+ page.get_by_role('button',name='退出',exact=True).click()
+ expect(page.get_by_role('button',name='登录 Bilibili',exact=True)).to_be_visible()
+ page.add_init_script('window.mockExpired=true')
+ page.reload()
+ page.wait_for_load_state('networkidle')
+ page.get_by_role('button',name='凭证管理',exact=True).click()
+ expect(page.get_by_text('测试账号 (已过期)',exact=True)).to_be_visible()
+ page.get_by_role('button',name='退出此账号',exact=True).click()
+ page.get_by_role('button',name='退出',exact=True).click()
+ expect(page.get_by_role('button',name='登录 Bilibili',exact=True)).to_be_visible()
  browser.close()
  print('PGC UI state and layout checks passed')

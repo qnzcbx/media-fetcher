@@ -1,19 +1,22 @@
 <script setup lang="ts">
+import { LogOut } from "@lucide/vue";
 import BrandIcon from "../icons/BrandIcon.vue";
 import BaseModal from "../common/BaseModal.vue";
 import { computed } from "vue";
 import type { SafeAccount } from "../../mygo";
-import { findActiveAccount } from "../../composables/useCredentials";
+
 
 const props = defineProps<{
   accounts: SafeAccount[];
   credentialError: string;
+  busy?: boolean;
 }>();
 
-const account = computed(() => props.credentialError ? undefined : findActiveAccount(props.accounts, "bilibili"));
+const account = computed(() => props.accounts.find((item) => item.siteId === "bilibili" && item.isActive) ?? props.accounts.find((item) => item.siteId === "bilibili"));
 
 defineEmits<{
   (e: "close"): void;
+  (e: "logout", account: SafeAccount): void;
   (e: "loginBilibili"): void;
 }>();
 </script>
@@ -30,7 +33,8 @@ defineEmits<{
         v-if="account"
         class="auth-status active"
       >
-        {{ account.name }} (已登录)
+        <span>{{ account.name }} ({{ account.status === "active" ? "已登录" : "已过期" }})</span>
+        <button class="logout-button" :disabled="busy" title="退出此账号" aria-label="退出此账号" @click="$emit('logout', account)"><LogOut :size="18" /></button>
       </div>
       <div v-else class="auth-action">
         <button
@@ -70,11 +74,16 @@ defineEmits<{
   margin: 0 0 12px 0;
   font-size: 15px;
 }
+.logout-button { border: none; background: transparent; color: var(--text-sub); padding: 6px; cursor: pointer; display: inline-flex; border-radius: 6px; }
+.logout-button:hover:not(:disabled) { color: var(--danger); }
+.logout-button:disabled { opacity: .4; cursor: not-allowed; }
+.logout-button:focus-visible { outline: 2px solid var(--focus-ring); }
 .auth-status {
   font-size: 14px;
   color: var(--text-sub);
 }
 .auth-status.active {
+ display: flex; align-items: center; justify-content: space-between; gap: 8px;
   color: var(--selection-text);
   font-weight: 500;
 }

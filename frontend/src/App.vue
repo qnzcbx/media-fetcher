@@ -13,7 +13,7 @@ import DownloadGalleryDrawer from "./components/download/DownloadGalleryDrawer.v
 import SettingsDrawer from "./components/settings/SettingsDrawer.vue";
 import DownloadsView from "./views/DownloadsView.vue";
 
-import type { Episode, MediaInfoResponse } from "./mygo";
+import type { Episode, MediaInfoResponse, SafeAccount } from "./mygo";
 import { canUnlock, resolveParseTarget, useCredentials } from "./composables/useCredentials";
 import { useMediaParser } from "./composables/useMediaParser";
 import { useMediaPreview } from "./composables/useMediaPreview";
@@ -25,6 +25,7 @@ import { getUniqueVideoStreams } from "./utils/media";
 // Composables
 const {
   accounts,
+  logout,
   showAuthManage,
   showBiliQRModal,
   qrUrl,
@@ -70,6 +71,33 @@ const { preferences, setTheme, setDefaultAudioFormat, setDownloadDirectory } = u
 const currentView = ref<"home" | "downloads">("home");
 const drawerOpen = ref(false);
 const settingsOpen = ref(false);
+
+const logoutTarget = ref<SafeAccount>();
+const logoutBusy = ref(false);
+const logoutError = ref("");
+const accountBusy = computed(() => isParsing.value || isPreparing.value || isDownloading.value || logoutBusy.value);
+const requestLogout = (account: SafeAccount) => {
+  if (accountBusy.value) return;
+  logoutError.value = "";
+  logoutTarget.value = account;
+};
+const confirmLogout = async () => {
+  const account = logoutTarget.value;
+  if (!account || accountBusy.value) return;
+  logoutBusy.value = true;
+  logoutError.value = "";
+  // 即使磁盘清理失败，旧 Jar 也可能已撤销，先使资源快照失效。
+  if (mediaInfo.value?.siteId === account.siteId && mediaInfo.value.usedAccountId === account.accountId) closeResourcePicker();
+  closeQRModal();
+  try {
+    await logout(account);
+    logoutTarget.value = undefined;
+  } catch (error) {
+    logoutError.value = error instanceof Error ? error.message : "退出失败，请重试。";
+  } finally {
+    logoutBusy.value = false;
+  }
+};
 
 const url = ref("");
 const episodeOptions = ref<Episode[]>([]);
@@ -188,6 +216,11 @@ const handleUnlock = () => {
 </script>
 
 <template>
+  <RecycleConfirmation
+    :action="logoutTarget ? { title: '退出账号', name: logoutTarget.name || 'Bilibili', description: '退出后将清除本地登录凭证。', confirmLabel: '退出' } : undefined"
+    :busy="accountBusy" :error="logoutError"
+    @cancel="logoutTarget = undefined; logoutError = ''" @confirm="confirmLogout"
+  />
   <RecycleConfirmation :confirmation="recycleConfirmation" :busy="isRemoving" :error="managementError" @cancel="recycleConfirmation = undefined" @confirm="confirmRecycle" />
 
   <div class="app-container" :class="{ 'app-container--downloads': currentView === 'downloads' }">
@@ -297,6 +330,8 @@ const handleUnlock = () => {
       v-if="showAuthManage"
       :accounts="accounts"
       :credentialError="credentialError"
+      :busy="accountBusy"
+      @logout="requestLogout"
       @close="showAuthManage = false"
       @loginBilibili="() => loginBilibili()"
     />

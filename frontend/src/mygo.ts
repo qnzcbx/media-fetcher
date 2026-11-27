@@ -172,6 +172,8 @@ export const DesktopService = {
   getAccounts: bind<[], SafeAccount[]>("DesktopService.GetAccounts", () => []),
   getDefaultDownloadDirectory: bind<[], string>("DesktopService.GetDefaultDownloadDirectory", () => []),
   getDownloadFileStates: bind<[string[]], DownloadFileState[]>("DesktopService.GetDownloadFileStates", (ids: string[]) => [ids]),
+  /** LogoutAccount 仅清理 Media Fetcher 本地指定账号，不触发平台远程注销。 */
+  logoutAccount: bind<[string, string], void>("DesktopService.LogoutAccount", (siteID: string, accountID: string) => [siteID, accountID]),
   openDownloadDirectory: bind<[string], void>("DesktopService.OpenDownloadDirectory", (path: string) => [path]),
   openDownloadRecord: bind<[string, string], void>("DesktopService.OpenDownloadRecord", (id: string, action: string) => [id, action]),
   pollBiliQRCode: bind<[string], PollResult>("DesktopService.PollBiliQRCode", (qrcodeKey: string) => [qrcodeKey]),
