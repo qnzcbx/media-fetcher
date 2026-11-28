@@ -68,7 +68,19 @@ func TestDesktopYouTubeStreamKeyAndLosslessContainers(t *testing.T) {
 	vVP9Path := filepath.Join(fixtures, "v_vp9.webm")
 	aAACPath := filepath.Join(fixtures, "a_aac.m4a")
 	aOpusPath := filepath.Join(fixtures, "a_opus.webm")
-	run("-f", "lavfi", "-i", "color=s=64x64:r=10", "-t", "1", "-an", "-c:v", "libx264", vH264Path)
+	encOut, encErr := exec.Command(ff, "-hide_banner", "-encoders").CombinedOutput()
+	if encErr != nil {
+		t.Fatalf("探测 FFmpeg 编码器失败: %v (%s)", encErr, encOut)
+	}
+	h264Enc := "libx264"
+	if !strings.Contains(string(encOut), "libx264") {
+		if strings.Contains(string(encOut), "libopenh264") {
+			h264Enc = "libopenh264"
+		} else {
+			t.Fatalf("当前 FFmpeg 缺少测试夹具所需的 H.264 编码器（libx264 或 libopenh264）")
+		}
+	}
+	run("-f", "lavfi", "-i", "color=s=64x64:r=10", "-t", "1", "-an", "-c:v", h264Enc, vH264Path)
 	run("-f", "lavfi", "-i", "color=s=64x64:r=10", "-t", "1", "-an", "-c:v", "libvpx-vp9", vVP9Path)
 	run("-f", "lavfi", "-i", "sine=frequency=440:sample_rate=48000", "-t", "1", "-vn", "-c:a", "aac", aAACPath)
 	run("-f", "lavfi", "-i", "sine=frequency=440:sample_rate=48000", "-t", "1", "-vn", "-c:a", "libopus", aOpusPath)

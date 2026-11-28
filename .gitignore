@@ -1,6 +1,8 @@
 /bin/
 /build/
 /dist/
+/.cache/
+/resources/windows-amd64/
 *.exe
 *.test
 *.out

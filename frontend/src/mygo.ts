@@ -139,6 +139,26 @@ export interface RecycleResult {
   message: string;
 }
 
+/** RuntimeComponentStatus 描述设置页展示的单项运行组件状态。 */
+export interface RuntimeComponentStatus {
+  key: string;
+  name: string;
+  available: boolean;
+  version: string;
+  source: string;
+  kind: string;
+  detail: string;
+  path: string;
+  pairPath: string;
+}
+
+/** RuntimeStatusResponse 描述桌面端三类运行组件的实时状态。 */
+export interface RuntimeStatusResponse {
+  ytdlp: RuntimeComponentStatus;
+  jsRuntime: RuntimeComponentStatus;
+  ffmpeg: RuntimeComponentStatus;
+}
+
 export interface SafeAccount {
   siteId: string;
   accountId: string;
@@ -192,6 +212,8 @@ export const DesktopService = {
   getAccounts: bind<[], SafeAccount[]>("DesktopService.GetAccounts", () => []),
   getDefaultDownloadDirectory: bind<[], string>("DesktopService.GetDefaultDownloadDirectory", () => []),
   getDownloadFileStates: bind<[string[]], DownloadFileState[]>("DesktopService.GetDownloadFileStates", (ids: string[]) => [ids]),
+  /** GetRuntimeStatus 返回下载引擎（yt-dlp）、JS 运行时与媒体处理（FFmpeg / ffprobe）的可用状态与来源。 */
+  getRuntimeStatus: bind<[], RuntimeStatusResponse>("DesktopService.GetRuntimeStatus", () => []),
   /** LogoutAccount 仅清理 Media Fetcher 本地指定账号，不触发平台远程注销。 */
   logoutAccount: bind<[string, string], void>("DesktopService.LogoutAccount", (siteID: string, accountID: string) => [siteID, accountID]),
   openDownloadDirectory: bind<[string], void>("DesktopService.OpenDownloadDirectory", (path: string) => [path]),

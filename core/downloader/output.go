@@ -7,10 +7,11 @@ import (
 	"math"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
+
+	coreruntime "media-fetcher/core/runtime"
 )
 
 type MediaProbe struct {
@@ -26,17 +27,15 @@ type MediaProbe struct {
 
 func ProbeMedia(ctx context.Context, path string) (MediaProbe, error) {
 	var p MediaProbe
-	tool, err := exec.LookPath("ffprobe")
+	tool, err := FindFFprobe()
 	if err != nil {
-		ffmpeg, findErr := FindFFmpeg()
-		if findErr != nil {
-			return p, err
-		}
-		tool = filepath.Join(filepath.Dir(ffmpeg), "ffprobe"+filepath.Ext(ffmpeg))
+		return p, err
 	}
 	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
 	defer cancel()
-	data, err := exec.CommandContext(ctx, tool, "-v", "error", "-show_entries", "format=format_name,duration:stream=codec_type,codec_name", "-of", "json", "-i", path).Output()
+	cmd := exec.CommandContext(ctx, tool, "-v", "error", "-show_entries", "format=format_name,duration:stream=codec_type,codec_name", "-of", "json", "-i", path)
+	coreruntime.HideWindow(cmd)
+	data, err := cmd.Output()
 	if err != nil {
 		return p, err
 	}
@@ -233,7 +232,9 @@ func PrepareSingleTrack(ctx context.Context, path, output, format string, stage 
 		stage("transcoding")
 		args = append(args, "-map", "0:a:0", "-c:a", "libmp3lame", "-q:a", "2")
 	}
-	data, err := exec.CommandContext(ctx, ffmpeg, append(args, output)...).CombinedOutput()
+	cmd := exec.CommandContext(ctx, ffmpeg, append(args, output)...)
+	coreruntime.HideWindow(cmd)
+	data, err := cmd.CombinedOutput()
 	if err != nil {
 		_ = os.Remove(output)
 		if ctx.Err() != nil {

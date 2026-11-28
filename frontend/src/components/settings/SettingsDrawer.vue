@@ -2,6 +2,7 @@
 import { X } from "@lucide/vue";
 import BaseSheet from "../common/BaseSheet.vue";
 import DownloadDirectorySetting from "./DownloadDirectorySetting.vue";
+import RuntimeStatusSection from "./RuntimeStatusSection.vue";
 import ThemeSelector from "./ThemeSelector.vue";
 import type { AudioFormat, ThemePreference } from "../../utils/preferences";
 
@@ -70,6 +71,10 @@ const emit = defineEmits<{
           @update:modelValue="(value) => emit('update:downloadDirectory', value)"
         />
       </section>
+
+      <div class="settings-divider"></div>
+
+      <RuntimeStatusSection :open="open" />
     </div>
   </BaseSheet>
 </template>

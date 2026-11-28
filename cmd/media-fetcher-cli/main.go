@@ -21,6 +21,7 @@ import (
 	"media-fetcher/core/extractor/bilibili"
 	"media-fetcher/core/extractor/lofter"
 	"media-fetcher/core/extractor/youtube"
+	coreruntime "media-fetcher/core/runtime"
 	"media-fetcher/pkg/fsutil"
 	"media-fetcher/pkg/vault"
 )
@@ -41,6 +42,8 @@ func main() {
 		handleAccounts(os.Args[2:])
 	case "bili-qr":
 		handleBiliQR(os.Args[2:])
+	case "runtime":
+		handleRuntime()
 	case "version":
 		fmt.Println("media-fetcher core v1.0.0 (Windows Native DPAPI, Go 1.27+)")
 	default:
@@ -58,7 +61,17 @@ func printUsage() {
   media-fetcher-cli download [选项] <URL>           下载媒体资源
   media-fetcher-cli accounts                        查看已保存的站点账号列表（脱敏）
   media-fetcher-cli bili-qr                         申请 Bilibili 扫码登录会话
+  media-fetcher-cli runtime                         检查运行组件（yt-dlp / JS / FFmpeg）状态与来源
   media-fetcher-cli version                         查看版本信息`)
+}
+
+func handleRuntime() {
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	snap := coreruntime.InspectStatus(ctx, coreruntime.Options{})
+	enc := json.NewEncoder(os.Stdout)
+	enc.SetIndent("", "  ")
+	_ = enc.Encode(snap)
 }
 
 func getRegistry(credService *auth.CredentialService) *extractor.Registry {

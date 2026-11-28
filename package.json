@@ -7,10 +7,12 @@
     "mygo:dev": "mygo dev",
     "mygo:build": "mygo build",
     "mygo:generate": "mygo generate",
+    "release:windows": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-release-windows.ps1",
     "test:downloads": "node frontend/test/download-gallery.test.mjs",
     "test:credentials": "node frontend/test/credential-contract.test.mjs",
     "test:preferences": "node frontend/test/preferences.test.mjs",
     "test:youtube": "node frontend/test/youtube-contract.test.mjs",
+    "test:runtime": "node frontend/test/runtime-status.test.mjs",
     "dev": "vite frontend",
     "build": "vue-tsc -b frontend && vite build frontend",
     "preview": "vite preview frontend"

@@ -43,11 +43,29 @@ func TestResolveVideoContainer(t *testing.T) {
 	}
 }
 
+func selectTestH264Encoder(t *testing.T, ff string) string {
+	t.Helper()
+	out, err := exec.Command(ff, "-hide_banner", "-encoders").CombinedOutput()
+	if err != nil {
+		t.Fatalf("探测 FFmpeg 编码器失败: %v (%s)", err, out)
+	}
+	text := string(out)
+	if strings.Contains(text, "libx264") {
+		return "libx264"
+	}
+	if strings.Contains(text, "libopenh264") {
+		return "libopenh264"
+	}
+	t.Fatalf("当前 FFmpeg 缺少测试夹具所需的 H.264 编码器（libx264 或 libopenh264）")
+	return ""
+}
+
 func TestMuxVideoAudio_MP4WebMMKVLossless(t *testing.T) {
 	ff, err := FindFFmpeg()
 	if err != nil {
 		t.Skip("FFmpeg 不可用")
 	}
+	h264Enc := selectTestH264Encoder(t, ff)
 	d := t.TempDir()
 	run := func(args ...string) {
 		t.Helper()
@@ -61,7 +79,7 @@ func TestMuxVideoAudio_MP4WebMMKVLossless(t *testing.T) {
 	aAAC := filepath.Join(d, "a_aac.m4a")
 	aOpus := filepath.Join(d, "a_opus.webm")
 
-	run("-f", "lavfi", "-i", "color=s=64x64:r=10", "-t", "1", "-an", "-c:v", "libx264", vH264)
+	run("-f", "lavfi", "-i", "color=s=64x64:r=10", "-t", "1", "-an", "-c:v", h264Enc, vH264)
 	run("-f", "lavfi", "-i", "color=s=64x64:r=10", "-t", "1", "-an", "-c:v", "libvpx-vp9", vVP9)
 	run("-f", "lavfi", "-i", "sine=frequency=440:sample_rate=48000", "-t", "1", "-vn", "-c:a", "aac", aAAC)
 	run("-f", "lavfi", "-i", "sine=frequency=440:sample_rate=48000", "-t", "1", "-vn", "-c:a", "libopus", aOpus)
@@ -152,7 +170,7 @@ func TestVerifyMuxedOutput_SourceTrackFailures(t *testing.T) {
 	corrupt := filepath.Join(d, "corrupt.bin")
 	missing := filepath.Join(d, "missing.mp4")
 
-	run("-f", "lavfi", "-i", "color=s=64x64:r=10", "-t", "1", "-an", "-c:v", "libx264", vH264)
+	run("-f", "lavfi", "-i", "color=s=64x64:r=10", "-t", "1", "-an", "-c:v", selectTestH264Encoder(t, ff), vH264)
 	run("-f", "lavfi", "-i", "color=s=64x64:r=10", "-t", "1", "-an", "-c:v", "libvpx-vp9", vVP9)
 	run("-f", "lavfi", "-i", "sine=frequency=440:sample_rate=48000", "-t", "1", "-vn", "-c:a", "aac", aAAC)
 	run("-f", "lavfi", "-i", "sine=frequency=440:sample_rate=48000", "-t", "1", "-vn", "-c:a", "libopus", aOpus)

@@ -54,29 +54,35 @@ Media Fetcher 是一款基于 **Go Core + MyGo (v0.10.0) + Vue 3** 构建的本�
 
 ## 下载与安装（Windows）
 
-从仓库的 **GitHub Releases** 页面获取最新 Windows (amd64) 构建产物：
+从仓库的 **GitHub Releases** 页面获取最新 Windows (amd64) 完整随包构建产物（**开箱即用，无需自行安装 Node.js、Python、FFmpeg、ffprobe 或 yt-dlp，也无需修改系统 PATH**）：
 
-- **安装包**：`media-fetcher-setup-<version>-amd64.exe`（NSIS 安装向导）
-- **便携版**：`media-fetcher-<version>-windows-amd64-portable.zip`（解压后直接运行 `media-fetcher.exe`）
+- **安装包**：`media-fetcher-setup-<version>-amd64.exe`（NSIS 当前用户级安装向导，内置完整运行组件与 Microsoft Edge WebView2 运行时缺失引导；卸载不会删除用户已下载的媒体文件）
+- **便携版**：`media-fetcher-<version>-windows-amd64-portable.zip`（包含完整运行组件与许可证文件，解压至任意目录——支持中文与空格路径——直接运行 `media-fetcher.exe`）
 - **完整性校验**：`SHA256SUMS.txt`（下载后可在 PowerShell 中运行 `Get-FileHash <文件名> -Algorithm SHA256` 核对）
 
 > **当前发布限制说明**：
 > - Windows 构建产物暂未配置代码签名证书，首次运行可能触发 Windows SmartScreen 提示，请务必通过 `SHA256SUMS.txt` 核对文件哈希。
-> - 暂未内置应用自动更新与外部组件一键下载器；所需外部组件请按下方说明手动配置。
+> - 安装程序在检测到系统缺失 Microsoft Edge WebView2 Runtime 时，会引导从 Microsoft 官方地址下载并校验签名的 Evergreen Bootstrapper；若本机已安装 WebView2，则不会重复安装，卸载时亦绝不卸载系统 WebView2。
+> - 暂未内置应用或运行组件在线自动更新器；可在「设置 → 运行组件」中查看当前组件版本、可用状态与来源（内置 / 系统 / 用户指定）。
 
 ---
 
-## 外部组件依赖
+## 运行组件与发现优先级
 
-为遵守开源许可与安全边界，**本仓库与发布包均不包含以下第三方二进制**，需在本机准备：
+Windows 完整发布包在构建阶段通过 `scripts/fetch-bundled-tools-windows.ps1` 自动校验并随附以下固定版本组件（**不提交进 Git**）：
 
-| 组件 | 用途 | 适用平台 | 发现位置与配置方式 |
+| 组件 | 固定版本 | 用途 | 默认随包位置 |
 | --- | --- | --- | --- |
-| **FFmpeg & ffprobe** | 完整视频无损封装（MP4 / WebM / MKV）、单轨封装、MP3/M4A 转码（需含 `libmp3lame`）、封装校验与时长读取 | 全站点 | 加入系统 `PATH`（或置于 `C:\ffmpeg\bin` / `C:\Program Files\ffmpeg\bin`） |
-| **yt-dlp** | **仅用于 YouTube 元数据与轨道解析**，不参与媒体下载 | 仅 YouTube | 按优先级自动发现：① 程序同级 `tools/` 或 `bin/`；② `%APPDATA%\media-fetcher\tools\yt-dlp.exe`（同时支持官方目录版 `tools\yt-dlp\yt-dlp.exe`）；③ 环境变量 `MEDIA_FETCHER_YTDLP_PATH`；④ 系统 `PATH` |
-| **JavaScript 运行时** | 供 `yt-dlp` 求解 YouTube EJS 挑战（优先 **Node.js ≥ 22** 或 **Deno ≥ 2.3**，亦支持 **QuickJS-NG ≥ 0.12**） | 仅 YouTube | 优先复用系统 `PATH` 中已安装的 Node.js 22+（实测解挑战显著快于解释器）；亦可放入 `%APPDATA%\media-fetcher\tools\` 或设置 `MEDIA_FETCHER_JS_RUNTIME` / `MEDIA_FETCHER_JS_RUNTIME_PATH` |
+| **FFmpeg & ffprobe** | `n9.0.2-39-g7adfbe40dc` (`BtbN` LGPL Shared) | 全站点无损封装（MP4 / WebM / MKV）、单轨封装、M4A/MP3 转码、封装校验与时长读取 | `<安装目录>\tools\ffmpeg\`（`ffmpeg.exe`、`ffprobe.exe` 及 LGPL 共享 DLL，不含 `ffplay.exe`） |
+| **yt-dlp** | `2026.11.23`（官方目录版 `yt-dlp_win.zip`） | **仅用于 YouTube 元数据与轨道解析**，不参与媒体下载 | `<安装目录>\tools\yt-dlp\` |
+| **Deno** | `v2.9.8`（官方 Windows x64） | 供 `yt-dlp` 求解 YouTube EJS 挑战（同时兼容 Node.js ≥ 22 与 QuickJS-NG ≥ 0.12） | `<安装目录>\tools\deno.exe` |
 
-> **提示**：官方 [yt-dlp Releases](https://github.com/yt-dlp/yt-dlp/releases) 同时提供单文件 `yt-dlp.exe` 与免解压目录版 `yt-dlp_win.zip`（解压至 `%APPDATA%\media-fetcher\tools\yt-dlp\` 即可生效，可省去单文件版每次约 1–1.5 秒的启动解压耗时）。请核对官方 `SHA2-256SUMS` 后再部署。
+Go CLI 与桌面端共用 `core/runtime` 工具发现核心，统一按以下顺序解析：
+
+1. **用户显式配置或环境变量覆盖**（`MEDIA_FETCHER_FFMPEG_PATH` / `MEDIA_FETCHER_FFPROBE_PATH` / `MEDIA_FETCHER_YTDLP_PATH` / `MEDIA_FETCHER_JS_RUNTIME_PATH` / `MEDIA_FETCHER_JS_RUNTIME`；显式路径无效时直接明确报错，绝不静默切换其他工具）
+2. **安装包随附组件目录**（`<exeDir>\tools\`；FFmpeg 与 ffprobe 强制同目录配对发现，避免混用随包版本与系统版本）
+3. **应用专用工具目录**（`%APPDATA%\media-fetcher\tools\`）
+4. **系统 `PATH`**（普通源码开发无需强制下载完整随包组件，可直接复用本机 `PATH` 中的工具）
 
 ---
 
@@ -85,8 +91,9 @@ Media Fetcher 是一款基于 **Go Core + MyGo (v0.10.0) + Vue 3** 构建的本�
 CLI 与桌面端共用同一套 `core/` 解析、凭证、代理与下载封装实现。可在仓库根目录通过 `go run ./cmd/media-fetcher-cli` 或编译后的 `media-fetcher-cli` 运行：
 
 ```powershell
-# 查看版本与已保存的脱敏账号列表
+# 查看版本、运行组件状态与已保存的脱敏账号列表
 go run ./cmd/media-fetcher-cli version
+go run ./cmd/media-fetcher-cli runtime
 go run ./cmd/media-fetcher-cli accounts
 
 # 申请 Bilibili 终端扫码登录（凭证经本机 DPAPI 加密保存）
@@ -134,14 +141,17 @@ pnpm run mygo:dev
 # 更新 Go ↔ TypeScript IPC 绑定（修改 DesktopService 导出方法后执行）
 pnpm run mygo:generate
 
-# 构建 Windows 生产版可执行文件与 NSIS 安装包
+# 普通开发构建（不强制下载随包运行时，仅编译可执行文件与开发用安装器）
 pnpm run mygo:build
+
+# 完整发布构建（自动拉取并校验随包组件 → 测试 → MyGo 打包 → 白名单与空 PATH 验收 → 便携 ZIP + SHA256SUMS）
+pnpm run release:windows
 ```
 
-生产构建产物位于 `build/windows-amd64/`：
-- `build/windows-amd64/media-fetcher.exe`（便携可执行文件）
-- `build/windows-amd64/media-fetcher-setup-1.0.0-amd64.exe`（NSIS 安装包）
-- `build/windows-amd64/THIRD_PARTY_NOTICES.md`
+完整发布构建产物位于 `dist/windows-amd64/`：
+- `dist/windows-amd64/media-fetcher-setup-1.0.0-amd64.exe`（含随包运行时与 WebView2 引导的 NSIS 安装包）
+- `dist/windows-amd64/media-fetcher-1.0.0-windows-amd64-portable.zip`（含完整随包运行时与许可证的便携版）
+- `dist/windows-amd64/SHA256SUMS.txt` 与 `dist/windows-amd64/THIRD_PARTY_NOTICES.md`
 
 ### 自动化测试
 
@@ -149,11 +159,12 @@ pnpm run mygo:build
 # Go 核心与桌面服务全量测试（不依赖本机登录态或实网下载）
 go test -count=1 ./core/... ./internal/... ./pkg/... ./test/...
 
-# 前端四套契约回归测试
+# 前端五套契约回归测试
 pnpm run test:youtube
 pnpm run test:downloads
 pnpm run test:credentials
 pnpm run test:preferences
+pnpm run test:runtime
 
 # TypeScript 类型检查与 Vite 前端构建
 pnpm run build
@@ -211,15 +222,14 @@ frontend/src/
 
 以下为后续规划方向（当前版本尚未实现）：
 
-- **外部组件引导**：在设置页增加 `FFmpeg` / `yt-dlp` / JS 运行时状态检测、版本展示与用户显式授权后的校验部署引导。
-- **解析性能与目录版优化**：支持更便捷地选用官方目录版 `yt-dlp_win.zip`，并按需评估更多网络场景下的传输优化。
+- **yt-dlp 受控应用内更新**：基于已预留的 `core/runtime.ManagedResolver` 接口，支持 GPG 验签、自检与失败自动回滚，应对站点策略变更而无需频繁全量发版。
+- **Media Lite 轻量 FFmpeg 裁剪构建**：在保留全部容器无损封装与音频转码能力前提下裁剪视频编码器与重型滤镜，将安装包体积进一步压缩。
 - **跨平台桌面适配**：逐步补齐 macOS / Linux 的系统凭证保险库、回收站删除、系统代理与打包测试。
-- **发布工程完善**：评估代码签名证书配置与基于校验签名的受控更新检查机制。
+- **发布工程完善**：评估代码签名证书配置，消除 Windows SmartScreen 首次拦截提示。
 
 ---
 
 ## 第三方声明
 
-本项目使用的 Bilibili、LOFTER 与 YouTube 线性品牌图标均源自 [Arcticons](https://github.com/Arcticons-Team/Arcticons)，按 [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/) 许可提供，详见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
-
-外部可选依赖组件（FFmpeg、yt-dlp、Node.js / Deno / QuickJS-NG）各自遵循其上游开源许可证，不随本仓库或当前 Windows 发布包分发。
+- Windows 完整发布包随附的第三方运行组件（FFmpeg/ffprobe LGPL-3.0-or-later、yt-dlp 官方 PyInstaller 构建及其内置依赖含 GPLv3+/GPL-2.0-or-later 组件、Deno MIT）的完整许可证原文、依赖清单与固定版本对应源码地址均收录于 [licenses/README.md](licenses/README.md) 与 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
+- 本项目使用的 Bilibili、LOFTER 与 YouTube 线性品牌图标均源自 [Arcticons](https://github.com/Arcticons-Team/Arcticons)，按 [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/) 许可提供，详见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。

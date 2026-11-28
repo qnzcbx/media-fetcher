@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	"media-fetcher/core/extractor"
+	coreruntime "media-fetcher/core/runtime"
 )
 
 const (
@@ -83,6 +84,7 @@ func buildYTDLPArgs(env RuntimeEnv, canonicalURL string) []string {
 	args := []string{
 		"--ignore-config",
 		"--no-config-locations",
+		"--encoding", "utf-8",
 		"--no-cookies",
 		"--no-cookies-from-browser",
 		"--no-playlist",
@@ -121,7 +123,7 @@ func (l *limitedBuffer) Write(p []byte) (int, error) {
 
 func runSubprocess(ctx context.Context, bin string, args []string) ([]byte, string, error) {
 	cmd := exec.CommandContext(ctx, bin, args...)
-	hideWindow(cmd)
+	coreruntime.HideWindow(cmd)
 	// 防止外部工具读取环境变量中意外注入的敏感代理/配置之外，保留必要系统环境以便 TLS 根证书和网络代理正常工作。
 	stdout := &limitedBuffer{limit: maxStdoutBytes}
 	stderr := &limitedBuffer{limit: maxStderrBytes}

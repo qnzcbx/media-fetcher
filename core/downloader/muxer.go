@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	coreruntime "media-fetcher/core/runtime"
 	"media-fetcher/pkg/fsutil"
 )
 
@@ -21,26 +22,25 @@ var (
 	ErrMuxFailed = errors.New("muxer: ffmpeg 封装执行失败")
 )
 
-// FindFFmpeg 尝试在环境变量 PATH 或常见路径中定位 ffmpeg。
+// FindFFmpeg 按统一优先级（显式覆盖 → 随包目录 → 应用工具目录 → 系统 PATH）定位与 ffprobe 配对的 ffmpeg。
 func FindFFmpeg() (string, error) {
-	// 1. 优先检查 PATH
-	if p, err := exec.LookPath("ffmpeg"); err == nil {
-		return p, nil
-	}
-
-	// 2. 检查常见 Windows 默认路径
-	candidates := []string{
-		`C:\tool\ffmpeg\bin\ffmpeg.exe`,
-		`C:\ffmpeg\bin\ffmpeg.exe`,
-		`C:\Program Files\ffmpeg\bin\ffmpeg.exe`,
-	}
-	for _, c := range candidates {
-		if _, err := os.Stat(c); err == nil {
-			return c, nil
+	tools, err := coreruntime.ResolveMediaTools(coreruntime.Options{})
+	if err != nil {
+		if errors.Is(err, coreruntime.ErrInvalidExplicitPath) {
+			return "", err
 		}
+		return "", fmt.Errorf("%w: %v", ErrFFmpegNotFound, err)
 	}
+	return tools.FFmpeg.Path, nil
+}
 
-	return "", ErrFFmpegNotFound
+// FindFFprobe 按统一优先级定位与 ffmpeg 配对的 ffprobe。
+func FindFFprobe() (string, error) {
+	tools, err := coreruntime.ResolveMediaTools(coreruntime.Options{})
+	if err != nil {
+		return "", err
+	}
+	return tools.FFprobe.Path, nil
 }
 
 // MuxVideoAudio 使用 FFmpeg Stream Copy (-c copy) 将音视频轨道无损封装为目标容器（MP4 / WebM / MKV），
@@ -105,6 +105,7 @@ func MuxVideoAudio(ctx context.Context, ffmpegPath, videoPath, audioPath, output
 	args = append(args, tmpMuxPath)
 
 	cmd := exec.CommandContext(ctx, ffmpegPath, args...)
+	coreruntime.HideWindow(cmd)
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
 

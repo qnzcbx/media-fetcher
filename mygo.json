@@ -10,6 +10,9 @@
   "bindings": "frontend/src/mygo.ts",
   "icon": "assets/branding/icon.png",
   "macos": { "icon": "assets/branding/icon.icns" },
+  "windows": {
+    "installerInclude": "packaging/windows/webview2-installer.nsh"
+  },
   "resources": ["THIRD_PARTY_NOTICES.md"],
   "out": "build"
 }

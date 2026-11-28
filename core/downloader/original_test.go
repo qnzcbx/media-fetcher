@@ -14,6 +14,7 @@ func TestOriginalMediaOutputs(t *testing.T) {
 	if err != nil {
 		t.Skip(err)
 	}
+	h264Enc := selectTestH264Encoder(t, ff)
 	run := func(args ...string) {
 		t.Helper()
 		if out, err := exec.Command(ff, append([]string{"-v", "error", "-y"}, args...)...).CombinedOutput(); err != nil {
@@ -49,7 +50,7 @@ func TestOriginalMediaOutputs(t *testing.T) {
 				t.Fatal("PCM 数据改变")
 			}
 			video := filepath.Join(d, "video.mp4")
-			run("-f", "lavfi", "-i", "color=s=32x32:r=10", "-t", "1", "-an", "-c:v", "libx264", video)
+			run("-f", "lavfi", "-i", "color=s=32x32:r=10", "-t", "1", "-an", "-c:v", h264Enc, video)
 			muxed := filepath.Join(d, "mux.mp4")
 			if err := MuxVideoAudio(t.Context(), ff, video, input, muxed); err != nil {
 				t.Fatal(err)

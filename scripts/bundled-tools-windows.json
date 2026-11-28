@@ -1,0 +1,85 @@
+{
+  "schemaVersion": 1,
+  "platform": "windows-amd64",
+  "updatedAt": "2026-11-28",
+  "components": {
+    "ytDlp": {
+      "name": "yt-dlp",
+      "version": "2026.11.23",
+      "asset": "yt-dlp_win.zip",
+      "url": "https://github.com/yt-dlp/yt-dlp/releases/download/2026.11.23/yt-dlp_win.zip",
+      "sha256": "824860984b96ca01de09f98f7bfd74ed7bbdce72a3340b51af8b9dc5ee037a5f",
+      "checksumsUrl": "https://github.com/yt-dlp/yt-dlp/releases/download/2026.11.23/SHA2-256SUMS",
+      "signatureUrl": "https://github.com/yt-dlp/yt-dlp/releases/download/2026.11.23/SHA2-256SUMS.sig",
+      "publicKeyFile": "packaging/windows/keys/yt-dlp-public.key",
+      "publicKeySha256": "45d6b415928b5f3e228b461fa9e6d7eb56a824931c785ece00279a06c7a6d6e5",
+      "publicKeyFingerprint": "AC0CBBE6848D6A873464AF4E57CF65933B5A7581",
+      "targetRelDir": "tools/yt-dlp",
+      "executableRelPath": "tools/yt-dlp/yt-dlp.exe",
+      "executableSha256": "e95f97012a65f307deca61ebc4eec116b60fce0ca7694466ca7312e1c8cd969b",
+      "requiredRelFiles": [
+        "tools/yt-dlp/yt-dlp.exe",
+        "tools/yt-dlp/_internal/THIRD_PARTY_LICENSES.txt"
+      ],
+      "license": "Source: Unlicense; Official PyInstaller bundle includes GPLv3+ / GPL-2.0-or-later components (handled under GPLv3+ obligations)",
+      "sourceUrl": "https://github.com/yt-dlp/yt-dlp/releases/download/2026.11.23/yt-dlp.tar.gz",
+      "sourceSha256": "8f757547e94c723415fd82bb5da857d8e1b24be2e34218890dfaac134907723e",
+      "buildOrigin": "Official yt-dlp GitHub Release (PyInstaller Windows x64 onedir)"
+    },
+    "deno": {
+      "name": "Deno",
+      "version": "2.9.8",
+      "asset": "deno-x86_64-pc-windows-msvc.zip",
+      "url": "https://github.com/denoland/deno/releases/download/v2.9.8/deno-x86_64-pc-windows-msvc.zip",
+      "sha256": "cba84b26e0df5ae7f74fc66b86a95b866872a86292ebd84fa1e959927edd93bf",
+      "checksumsUrl": "https://github.com/denoland/deno/releases/download/v2.9.8/deno-x86_64-pc-windows-msvc.zip.sha256sum",
+      "targetRelDir": "tools",
+      "executableRelPath": "tools/deno.exe",
+      "executableSha256": "924397800533d3eb0ed0c889b20ad70e18b970d93acd8135bc043f425e528266",
+      "license": "MIT",
+      "sourceUrl": "https://github.com/denoland/deno/archive/refs/tags/v2.9.8.tar.gz",
+      "buildOrigin": "Official denoland/deno GitHub Release (x86_64-pc-windows-msvc)"
+    },
+    "ffmpeg": {
+      "name": "FFmpeg / ffprobe (BtbN LGPL Shared)",
+      "version": "n9.0.2-39-g7adfbe40dc",
+      "releaseTag": "autobuild-2026-10-31-12-59",
+      "asset": "ffmpeg-n9.0.2-39-g7adfbe40dc-win64-lgpl-shared-9.0.zip",
+      "url": "https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-10-31-12-59/ffmpeg-n9.0.2-39-g7adfbe40dc-win64-lgpl-shared-9.0.zip",
+      "sha256": "e907b01fa4783913151237e37df2a10fa97d99a1598a021bf59d4ae62ffed4c0",
+      "checksumsUrl": "https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-10-31-12-59/checksums.sha256",
+      "targetRelDir": "tools/ffmpeg",
+      "executableRelPath": "tools/ffmpeg/ffmpeg.exe",
+      "ffprobeRelPath": "tools/ffmpeg/ffprobe.exe",
+      "allowedBinFiles": {
+        "ffmpeg.exe": "ac68fc6b9c30b7378b54afccc7e9eff84b318ba1e876d9ab85c8b8cc1dd7e4ea",
+        "ffprobe.exe": "d339923de7cd0827f634fe4faba661bdbf384dab1e36c2224c51673193537a44",
+        "avcodec-63.dll": "c20d1a5b282a83b5bc586b65b23cf4837d83c2caa3b4dd4863ede2dd0f1858b5",
+        "avdevice-63.dll": "a806e0c109646c3dacdfadbf2a9bb33b1e8e4fa8b1d49b6e27c025e27f12ee60",
+        "avfilter-12.dll": "a56c3f9b6becf4809ee63f85fe1120bbbece56dd2ad700cf2403f8c36499ed4a",
+        "avformat-63.dll": "7c13073a52f7ad76cfc1c7e76d782e89d88c1155cf2500c3320d034b507605f6",
+        "avutil-61.dll": "cb50cdee16a5031090330997b51c016fe7788487150cd07fa20ddbda4d108d09",
+        "swresample-7.dll": "12b907ddfff765e10c3b7da1a7985513dc9282c08953259f337f952f7b8a9f2a",
+        "swscale-10.dll": "40c20c66f9bdf08a79453056bd40293ff234927e8c4a1bae5fafdcf97da3be42"
+      },
+      "excludedBinFiles": [
+        "ffplay.exe"
+      ],
+      "license": "LGPL-3.0-or-later",
+      "sourceUrl": "https://github.com/FFmpeg/FFmpeg/archive/7adfbe40dc.tar.gz",
+      "buildScriptsUrl": "https://github.com/BtbN/FFmpeg-Builds",
+      "buildOrigin": "BtbN/FFmpeg-Builds permanent month-end autobuild (win64-lgpl-shared-9.0)"
+    }
+  },
+  "requiredLicenses": [
+    "licenses/README.md",
+    "licenses/ffmpeg/LICENSE-LGPL-3.0.txt",
+    "licenses/ffmpeg/SOURCE.md",
+    "licenses/yt-dlp/LICENSE-UNLICENSE.txt",
+    "licenses/yt-dlp/LICENSE-GPL-3.0.txt",
+    "licenses/yt-dlp/LICENSE-GPL-2.0.txt",
+    "licenses/yt-dlp/SOURCE.md",
+    "licenses/deno/LICENSE-MIT.txt",
+    "licenses/deno/SOURCE.md"
+  ]
+}

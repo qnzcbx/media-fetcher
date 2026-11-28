@@ -16,7 +16,7 @@ concurrency:
 
 jobs:
   windows-amd64:
-    name: Test & Build (Windows amd64)
+    name: Test & Dev Build (Windows amd64)
     runs-on: windows-latest
     defaults:
       run:
@@ -43,7 +43,26 @@ jobs:
           node-version: "22"
           cache: pnpm
 
-      - name: Ensure FFmpeg and ffprobe are available
+      - name: Verify bundled tools lockfile, GPG key, and license compliance files
+        run: |
+          $lock = Get-Content -Raw scripts/bundled-tools-windows.json | ConvertFrom-Json
+          $keyPath = $lock.components.ytDlp.publicKeyFile
+          if (-not (Test-Path -LiteralPath $keyPath)) { throw "Missing yt-dlp GPG key: $keyPath" }
+          $gotHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $keyPath).Hash.ToLowerInvariant()
+          if ($gotHash -ne $lock.components.ytDlp.publicKeySha256.ToLowerInvariant()) {
+            throw "yt-dlp public key SHA-256 mismatch: $gotHash"
+          }
+          foreach ($lic in $lock.requiredLicenses) {
+            if (-not (Test-Path -LiteralPath $lic) -or (Get-Item -LiteralPath $lic).Length -eq 0) {
+              throw "Missing or empty required license file: $lic"
+            }
+          }
+          if (-not (Test-Path -LiteralPath "packaging/windows/webview2-installer.nsh")) {
+            throw "Missing packaging/windows/webview2-installer.nsh"
+          }
+          Write-Output "Lockfile, GPG key, WebView2 NSIS hook, and licenses verified."
+
+      - name: Ensure FFmpeg and ffprobe are available for Go media tests
         run: |
           if (-not (Get-Command ffmpeg -ErrorAction SilentlyContinue) -or -not (Get-Command ffprobe -ErrorAction SilentlyContinue)) {
             choco install ffmpeg --no-progress -y
@@ -79,22 +98,18 @@ jobs:
           CGO_ENABLED: "0"
         run: go build ./...
 
-      - name: Run frontend YouTube contract tests
-        run: pnpm run test:youtube
-
-      - name: Run frontend downloads contract tests
-        run: pnpm run test:downloads
-
-      - name: Run frontend credentials contract tests
-        run: pnpm run test:credentials
-
-      - name: Run frontend preferences contract tests
-        run: pnpm run test:preferences
+      - name: Run frontend contract tests
+        run: |
+          pnpm run test:youtube
+          pnpm run test:downloads
+          pnpm run test:credentials
+          pnpm run test:preferences
+          pnpm run test:runtime
 
       - name: Typecheck and build frontend
         run: pnpm run build
 
-      - name: Build Windows amd64 desktop executable and installer with MyGo
+      - name: Build Windows amd64 dev desktop executable and installer with MyGo
         run: pnpm exec mygo build -platform windows/amd64
 
       - name: Verify MyGo outputs and bindings sync
