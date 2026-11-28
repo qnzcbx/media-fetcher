@@ -21,6 +21,7 @@ import { useMediaPreview } from "./composables/useMediaPreview";
 import { useMediaSelection } from "./composables/useMediaSelection";
 import { useDownloads } from "./composables/useDownloads";
 import { usePreferences } from "./composables/usePreferences";
+import { useSmartClipboard } from "./composables/useSmartClipboard";
 import { closeActiveActionMenu } from "./composables/useActionMenu";
 import { getUniqueVideoStreams } from "./utils/media";
 
@@ -70,7 +71,14 @@ const {
   confirmRecycle,
   refreshFileStates,
 } = useDownloads();
-const { preferences, setTheme, setDefaultAudioFormat, setDownloadDirectory } = usePreferences();
+const {
+  preferences,
+  setTheme,
+  setDefaultAudioFormat,
+  setDownloadDirectory,
+  setAutoDetectClipboard,
+  dismissClipboardNotice,
+} = usePreferences();
 
 // State
 const currentView = ref<"home" | "downloads">("home");
@@ -117,6 +125,40 @@ const url = ref("");
 const episodeOptions = ref<Episode[]>([]);
 let snapshot: { url: string; media: MediaInfoResponse } | undefined;
 const isPreparing = ref(false);
+
+const autoDetectClipboardEnabled = computed(() => preferences.value.autoDetectClipboard);
+const isClipboardCheckBlocked = computed(
+  () =>
+    isPreparing.value ||
+    isParsing.value ||
+    Boolean(mediaInfo.value) ||
+    showAuthManage.value ||
+    showBiliQRModal.value,
+);
+const {
+  autoFillNotice,
+  clearAutoFillNotice,
+  triggerCheck: triggerClipboardCheck,
+  markUserCleared,
+  markManualInput,
+} = useSmartClipboard({
+  autoDetectEnabled: autoDetectClipboardEnabled,
+  currentView,
+  inputUrl: url,
+  isBusy: isClipboardCheckBlocked,
+  onClearError: () => {
+    parseError.value = "";
+  },
+});
+
+const handleToggleAutoDetectClipboard = (enabled: boolean) => {
+  setAutoDetectClipboard(enabled);
+  if (enabled) {
+    triggerClipboardCheck("enable");
+  } else {
+    clearAutoFillNotice();
+  }
+};
 
 const openCredentials = () => {
   showAuthManage.value = true;
@@ -258,11 +300,48 @@ const handleUnlock = () => {
         <LinkInput
           v-model="url"
           :isParsing="isPreparing || isParsing"
-          @submit="handleParse"
+          @submit="clearAutoFillNotice(); handleParse()"
           @pasteError="(msg) => (parseError = msg)"
+          @pasteSuccess="(text) => { parseError = ''; markManualInput(text); }"
+          @clear="markUserCleared"
         />
 
         <SupportedSites />
+
+        <div
+          v-if="!mediaInfo && autoFillNotice"
+          class="clipboard-feedback"
+          role="status"
+          aria-live="polite"
+        >
+          {{ autoFillNotice }}
+        </div>
+
+        <div
+          v-if="!mediaInfo && !preferences.clipboardNoticeDismissed"
+          class="clipboard-consent"
+          role="note"
+        >
+          <span class="clipboard-consent__text">
+            可开启「自动识别剪贴板链接」：仅在进入或返回首页且输入框为空时读取本地剪贴板，不记录或上传内容。
+          </span>
+          <div class="clipboard-consent__actions">
+            <button
+              type="button"
+              class="clipboard-consent__btn clipboard-consent__btn--primary"
+              @click="handleToggleAutoDetectClipboard(true)"
+            >
+              开启
+            </button>
+            <button
+              type="button"
+              class="clipboard-consent__btn"
+              @click="dismissClipboardNotice"
+            >
+              暂不开启
+            </button>
+          </div>
+        </div>
 
         <div class="error-msg" v-if="!mediaInfo && (parseError || credentialError)" role="alert">
           {{ parseError || credentialError }}
@@ -313,9 +392,11 @@ const handleUnlock = () => {
       :downloadDirectory="preferences.downloadDirectory"
       @update:downloadDirectory="setDownloadDirectory"
       :defaultAudioFormat="preferences.defaultAudioFormat"
+      :autoDetectClipboard="preferences.autoDetectClipboard"
       @close="settingsOpen = false"
       @update:theme="setTheme"
       @update:defaultAudioFormat="setDefaultAudioFormat"
+      @update:autoDetectClipboard="handleToggleAutoDetectClipboard"
     />
 
     <!-- Resource Selection Modal -->
@@ -415,6 +496,69 @@ const handleUnlock = () => {
   background: var(--error-bg);
   padding: 10px;
   border-radius: 8px;
+}
+
+.clipboard-feedback {
+  align-self: center;
+  margin-top: 12px;
+  padding: 5px 12px;
+  border-radius: 999px;
+  font-size: 12px;
+  color: var(--selection-text);
+  background: var(--selection-bg);
+}
+
+.clipboard-consent {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 14px;
+  padding: 10px 14px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--card-bg);
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text-assist);
+}
+
+.clipboard-consent__text {
+  flex: 1;
+  min-width: 0;
+}
+
+.clipboard-consent__actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.clipboard-consent__btn {
+  padding: 4px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-main);
+  font-size: 12px;
+  cursor: pointer;
+  transition: background-color 0.16s ease, border-color 0.16s ease;
+}
+
+.clipboard-consent__btn:hover {
+  background: var(--hover-bg);
+}
+
+.clipboard-consent__btn--primary {
+  border-color: var(--primary-hover);
+  background: var(--primary);
+  color: var(--primary-text);
+  font-weight: 500;
+}
+
+.clipboard-consent__btn--primary:hover {
+  background: var(--primary-hover);
 }
 
 .fade-view-enter-active,

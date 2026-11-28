@@ -74,6 +74,10 @@ try {
         if ($LASTEXITCODE -ne 0) { return }
         if (Test-Path -LiteralPath (Join-Path $Root 'frontend\test\runtime-status.test.mjs')) {
           & pnpm run test:runtime
+          if ($LASTEXITCODE -ne 0) { return }
+        }
+        if (Test-Path -LiteralPath (Join-Path $Root 'frontend\test\clipboard.test.mjs')) {
+          & pnpm run test:clipboard
         }
       }
     } finally {

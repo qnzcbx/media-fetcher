@@ -50,6 +50,15 @@ type DesktopService struct {
 	fileMu       sync.Mutex
 	deletePlans  map[string]deleteSnapshot
 	recycleFile  func(string) error
+
+	// 原生剪贴板状态（后台仅记录变化序号，不持续读取剪贴板内容）
+	clipboardMu       sync.Mutex
+	clipboardImpl     clipboardBackend
+	clipboardSleep    func(time.Duration)
+	clipboardSeq      uint64
+	clipboardDirty    bool
+	clipboardWatching bool
+	clipboardOff      []func()
 }
 
 func NewDesktopService() (*DesktopService, error) {
@@ -77,6 +86,7 @@ func NewDesktopService() (*DesktopService, error) {
 
 func (s *DesktopService) SetWindow(w *mygo.Window) {
 	s.win = w
+	s.setupClipboardWatch(w)
 }
 
 // MediaInfoResponse 发送给前端的媒体信息响应结构体

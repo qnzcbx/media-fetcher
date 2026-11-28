@@ -26,6 +26,27 @@ export interface BiliQRSession {
   url: string;
 }
 
+/** ClipboardReadResult 描述桌面端原生剪贴板文本读取结果。 */
+export interface ClipboardReadResult {
+  status: string;
+  text: string;
+  message: string;
+}
+
+/** ClipboardSignal 在窗口重新聚焦时通知前端当前剪贴板变化序号（不包含剪贴板原文）。 */
+export interface ClipboardSignal {
+  reason: string;
+  seq: number;
+  dirty: boolean;
+  watching: boolean;
+}
+
+/** ClipboardSignalState 返回当前内存记录的剪贴板变化序号（不触发实际剪贴板读取）。 */
+export interface ClipboardSignalState {
+  seq: number;
+  watching: boolean;
+}
+
 export interface DeletePlan {
   token: string;
   targets: DeleteTarget[];
@@ -210,6 +231,8 @@ export const DesktopService = {
   galleryThumbnail: bind<[string], string>("DesktopService.GalleryThumbnail", (id: string) => [id]),
   generateBiliQRCode: bind<[], BiliQRSession>("DesktopService.GenerateBiliQRCode", () => []),
   getAccounts: bind<[], SafeAccount[]>("DesktopService.GetAccounts", () => []),
+  /** GetClipboardSignalState 返回当前已观测到的剪贴板变化序号，绝不读取剪贴板正文。 */
+  getClipboardSignalState: bind<[], ClipboardSignalState>("DesktopService.GetClipboardSignalState", () => []),
   getDefaultDownloadDirectory: bind<[], string>("DesktopService.GetDefaultDownloadDirectory", () => []),
   getDownloadFileStates: bind<[string[]], DownloadFileState[]>("DesktopService.GetDownloadFileStates", (ids: string[]) => [ids]),
   /** GetRuntimeStatus 返回下载引擎（yt-dlp）、JS 运行时与媒体处理（FFmpeg / ffprobe）的可用状态与来源。 */
@@ -220,6 +243,11 @@ export const DesktopService = {
   openDownloadRecord: bind<[string, string], void>("DesktopService.OpenDownloadRecord", (id: string, action: string) => [id, action]),
   pollBiliQRCode: bind<[string], PollResult>("DesktopService.PollBiliQRCode", (qrcodeKey: string) => [qrcodeKey]),
   prepareDownloadDeletion: bind<[string[]], DeletePlan>("DesktopService.PrepareDownloadDeletion", (ids: string[]) => [ids]),
+  /**
+   * ReadClipboardText 使用 MyGo 原生剪贴板能力读取纯文本内容。
+   * 区分空剪贴板、非文本内容、暂时占用与读取失败，并对短暂占用做有界重试而不阻塞主线程。
+   */
+  readClipboardText: bind<[], ClipboardReadResult>("DesktopService.ReadClipboardText", () => []),
   removeDownloadRecord: bind<[string], void>("DesktopService.RemoveDownloadRecord", (id: string) => [id]),
   selectDownloadDirectory: bind<[string], string>("DesktopService.SelectDownloadDirectory", (current: string) => [current]),
   setWindow: bind<[Window | null], void>("DesktopService.SetWindow", (w: Window | null) => [w]),
@@ -232,5 +260,7 @@ export const DesktopService = {
 
 /** Events sent by the Go side. Subscribe with `events.name.on(listener)`. */
 export const events = {
+  /** ClipboardSignalEvent 仅传递轻量焦点与变化信号，不传递剪贴板内容。 */
+  clipboardSignal: event<ClipboardSignal>("clipboard-signal"),
   progress: event<ProgressInfo>("progress"),
 } as const;

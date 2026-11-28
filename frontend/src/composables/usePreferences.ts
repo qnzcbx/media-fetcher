@@ -84,5 +84,25 @@ export const usePreferences = () => {
     preferences.value = { ...preferences.value, downloadDirectory };
   };
 
-  return { setDownloadDirectory, preferences, resolvedTheme, setTheme, setDefaultAudioFormat };
+  const setAutoDetectClipboard = (autoDetectClipboard: boolean) => {
+    preferences.value = {
+      ...preferences.value,
+      autoDetectClipboard,
+      clipboardNoticeDismissed: true,
+    };
+  };
+
+  const dismissClipboardNotice = () => {
+    preferences.value = { ...preferences.value, clipboardNoticeDismissed: true };
+  };
+
+  return {
+    setDownloadDirectory,
+    setAutoDetectClipboard,
+    dismissClipboardNotice,
+    preferences,
+    resolvedTheme,
+    setTheme,
+    setDefaultAudioFormat,
+  };
 };

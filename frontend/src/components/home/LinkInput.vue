@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, watch } from "vue";
 import { Download, ClipboardPaste, X } from "@lucide/vue";
+import { readClipboardText } from "../../utils/clipboard";
 
 const props = defineProps<{
   modelValue: string;
@@ -11,15 +12,18 @@ const emit = defineEmits<{
   (e: "update:modelValue", value: string): void;
   (e: "submit"): void;
   (e: "pasteError", message: string): void;
+  (e: "pasteSuccess", text: string): void;
+  (e: "clear"): void;
 }>();
 
 const localUrl = ref(props.modelValue);
+const isPasting = ref(false);
 
 watch(
   () => props.modelValue,
   (newVal) => {
     localUrl.value = newVal;
-  }
+  },
 );
 
 watch(localUrl, (newVal) => {
@@ -27,25 +31,52 @@ watch(localUrl, (newVal) => {
 });
 
 const onPaste = async () => {
+  if (props.isParsing || isPasting.value) return;
+  isPasting.value = true;
   try {
-    const text = await navigator.clipboard.readText();
-    if (text) {
-      localUrl.value = text;
+    const res = await readClipboardText();
+    if (res.status === "ok") {
+      localUrl.value = res.text;
+      emit("pasteError", "");
+      emit("pasteSuccess", res.text);
+      return;
     }
-  } catch (err) {
-    emit("pasteError", "无法读取剪贴板，请手动粘贴");
+    emit("pasteError", res.message);
+  } finally {
+    isPasting.value = false;
   }
+};
+
+const onNativePaste = (event: ClipboardEvent) => {
+  const pasted = event.clipboardData?.getData("text/plain") ?? "";
+  emit("pasteError", "");
+  if (pasted) {
+    emit("pasteSuccess", pasted);
+  }
+};
+
+const onClear = () => {
+  localUrl.value = "";
+  emit("pasteError", "");
+  emit("clear");
 };
 </script>
 
 <template>
   <form class="search-box" @submit.prevent="$emit('submit')">
-    <input v-model="localUrl" type="text" placeholder="你的链接" :disabled="isParsing" required />
+    <input
+      v-model="localUrl"
+      type="text"
+      placeholder="你的链接"
+      :disabled="isParsing"
+      required
+      @paste="onNativePaste"
+    />
     <div class="icon-btn-box">
       <button
         v-if="localUrl"
         type="button"
-        @click="localUrl = ''"
+        @click="onClear"
         class="icon-btn-small"
         title="清空"
         :disabled="isParsing"
@@ -58,7 +89,7 @@ const onPaste = async () => {
         @click="onPaste"
         class="icon-btn-small"
         title="粘贴"
-        :disabled="isParsing"
+        :disabled="isParsing || isPasting"
       >
         <ClipboardPaste class="icon" />
       </button>

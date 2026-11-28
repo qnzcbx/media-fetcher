@@ -16,18 +16,42 @@ try {
   // 合法字段保留，非法字段单独回退。
   assert.deepEqual(
     parsePreferences(JSON.stringify({ theme: "dark", defaultAudioFormat: "mp3" })),
-    { theme: "dark", defaultAudioFormat: "mp3", downloadDirectory: "" },
+    {
+      theme: "dark",
+      defaultAudioFormat: "mp3",
+      downloadDirectory: "",
+      autoDetectClipboard: false,
+      clipboardNoticeDismissed: false,
+    },
   );
   assert.deepEqual(
-    parsePreferences(JSON.stringify({ theme: "dark", defaultAudioFormat: "wav" })),
-    { theme: "dark", defaultAudioFormat: "m4a", downloadDirectory: "" },
+    parsePreferences(JSON.stringify({ theme: "dark", defaultAudioFormat: "wav", autoDetectClipboard: true })),
+    {
+      theme: "dark",
+      defaultAudioFormat: "m4a",
+      downloadDirectory: "",
+      autoDetectClipboard: true,
+      clipboardNoticeDismissed: false,
+    },
   );
   assert.deepEqual(
-    normalizePreferences({ theme: "light", defaultAudioFormat: "mp3" }),
-    { theme: "light", defaultAudioFormat: "mp3", downloadDirectory: "" },
+    normalizePreferences({ theme: "light", defaultAudioFormat: "mp3", autoDetectClipboard: "yes", clipboardNoticeDismissed: 1 }),
+    {
+      theme: "light",
+      defaultAudioFormat: "mp3",
+      downloadDirectory: "",
+      autoDetectClipboard: false,
+      clipboardNoticeDismissed: false,
+    },
   );
 
-  const custom = { theme: "dark", defaultAudioFormat: "mp3", downloadDirectory: "C:\\媒体 文件" };
+  const custom = {
+    theme: "dark",
+    defaultAudioFormat: "mp3",
+    downloadDirectory: "C:\\媒体 文件",
+    autoDetectClipboard: true,
+    clipboardNoticeDismissed: true,
+  };
   assert.deepEqual(parsePreferences(JSON.stringify(custom)), custom);
   for (const downloadDirectory of [22, {}, "relative/path"]) {
     assert.deepEqual(normalizePreferences({ ...custom, downloadDirectory }), { ...custom, downloadDirectory: "" });

@@ -105,6 +105,7 @@ jobs:
           pnpm run test:credentials
           pnpm run test:preferences
           pnpm run test:runtime
+          pnpm run test:clipboard
 
       - name: Typecheck and build frontend
         run: pnpm run build

@@ -13,6 +13,7 @@ defineProps<{
   downloadDirectory: string;
   theme: ThemePreference;
   defaultAudioFormat: AudioFormat;
+  autoDetectClipboard: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -20,6 +21,7 @@ const emit = defineEmits<{
   (e: "update:downloadDirectory", value: string): void;
   (e: "update:theme", value: ThemePreference): void;
   (e: "update:defaultAudioFormat", value: AudioFormat): void;
+  (e: "update:autoDetectClipboard", value: boolean): void;
 }>();
 </script>
 
@@ -70,6 +72,31 @@ const emit = defineEmits<{
           :modelValue="downloadDirectory"
           @update:modelValue="(value) => emit('update:downloadDirectory', value)"
         />
+      </section>
+
+      <div class="settings-divider"></div>
+
+      <section class="settings-section">
+        <h3>剪贴板</h3>
+        <div class="toggle-row">
+          <div class="toggle-copy">
+            <span class="toggle-title">自动识别剪贴板链接</span>
+            <p class="toggle-desc">
+              仅在进入或返回首页且输入框为空时读取本地剪贴板，提取单个受支持链接填入输入框；不自动解析、不记录剪贴板原文。
+            </p>
+          </div>
+          <button
+            type="button"
+            role="switch"
+            class="toggle-switch"
+            :class="{ 'toggle-switch--on': autoDetectClipboard }"
+            :aria-checked="autoDetectClipboard"
+            aria-label="自动识别剪贴板链接"
+            @click="emit('update:autoDetectClipboard', !autoDetectClipboard)"
+          >
+            <span class="toggle-thumb"></span>
+          </button>
+        </div>
       </section>
 
       <div class="settings-divider"></div>
@@ -136,6 +163,71 @@ const emit = defineEmits<{
   height: 1px;
   margin: 24px 0;
   background: var(--border);
+}
+
+.toggle-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.toggle-copy {
+  flex: 1;
+  min-width: 0;
+}
+
+.toggle-title {
+  display: block;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-main);
+}
+
+.toggle-desc {
+  margin: 6px 0 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text-assist);
+}
+
+.toggle-switch {
+  position: relative;
+  flex-shrink: 0;
+  width: 42px;
+  height: 24px;
+  margin-top: 2px;
+  padding: 2px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--input-bg);
+  cursor: pointer;
+  transition: background-color 0.18s ease, border-color 0.18s ease;
+}
+
+.toggle-switch--on {
+  background: var(--primary);
+  border-color: var(--primary-hover);
+}
+
+.toggle-switch:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+.toggle-thumb {
+  display: block;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--card-bg);
+  box-shadow: 0 1px 2px var(--shadow-color);
+  transform: translateX(0);
+  transition: transform 0.18s ease;
+}
+
+.toggle-switch--on .toggle-thumb {
+  transform: translateX(18px);
 }
 
 </style>

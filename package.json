@@ -13,6 +13,7 @@
     "test:preferences": "node frontend/test/preferences.test.mjs",
     "test:youtube": "node frontend/test/youtube-contract.test.mjs",
     "test:runtime": "node frontend/test/runtime-status.test.mjs",
+    "test:clipboard": "node frontend/test/clipboard.test.mjs",
     "dev": "vite frontend",
     "build": "vue-tsc -b frontend && vite build frontend",
     "preview": "vite preview frontend"
