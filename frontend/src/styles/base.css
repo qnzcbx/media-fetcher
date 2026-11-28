@@ -111,3 +111,33 @@ textarea::placeholder {
 .fade-leave-to {
   opacity: 0;
 }
+
+/* 与「我的下载」页共享的主题化细长无箭头滚动条 */
+.themed-scrollbar {
+  scrollbar-gutter: stable;
+}
+.themed-scrollbar::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+.themed-scrollbar::-webkit-scrollbar-button {
+  display: none;
+  width: 0;
+  height: 0;
+}
+.themed-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+.themed-scrollbar::-webkit-scrollbar-thumb {
+  background: var(--scrollbar-thumb);
+  border-radius: 999px;
+}
+.themed-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: var(--scrollbar-thumb-hover);
+}
+.themed-scrollbar::-webkit-scrollbar-thumb:active {
+  background: var(--scrollbar-thumb-active);
+}
+.themed-scrollbar::-webkit-scrollbar-corner {
+  background: transparent;
+}

@@ -8,7 +8,6 @@ export type Preferences = {
   theme: ThemePreference;
   defaultAudioFormat: AudioFormat;
   autoDetectClipboard: boolean;
-  clipboardNoticeDismissed: boolean;
 };
 
 export const PREFERENCES_STORAGE_KEY = "media-fetcher.preferences.v1";
@@ -17,8 +16,7 @@ export const DEFAULT_PREFERENCES: Preferences = {
   downloadDirectory: "",
   theme: "system",
   defaultAudioFormat: "m4a",
-  autoDetectClipboard: false,
-  clipboardNoticeDismissed: false,
+  autoDetectClipboard: true,
 };
 
 const THEME_PREFERENCES: readonly ThemePreference[] = ["light", "dark", "system"];
@@ -43,10 +41,6 @@ export const normalizePreferences = (value: unknown): Preferences => {
       typeof record.autoDetectClipboard === "boolean"
         ? record.autoDetectClipboard
         : DEFAULT_PREFERENCES.autoDetectClipboard,
-    clipboardNoticeDismissed:
-      typeof record.clipboardNoticeDismissed === "boolean"
-        ? record.clipboardNoticeDismissed
-        : DEFAULT_PREFERENCES.clipboardNoticeDismissed,
   };
 };
 

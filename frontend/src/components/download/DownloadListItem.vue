@@ -1,12 +1,13 @@
 <script setup lang="ts">
 import { ref, watch, computed } from "vue";
-import { formatFileSize, formatDuration } from "../../utils/fileMetadata";
+import { formatFileSize, formatDuration, resolveSourceBrand } from "../../utils/fileMetadata";
 import { progressText } from "../../utils/downloadStatus";
 import { isSelectableCard } from "../../composables/useGallerySelection";
 import { useActionMenu } from "../../composables/useActionMenu";
 import { Image, Play, Music, Ellipsis, Check } from "@lucide/vue";
 import { downloadAPI } from "../../api/download";
 import type { GalleryCard } from "../../composables/useDownloads";
+import BrandIcon from "../icons/BrandIcon.vue";
 import DownloadProgressOverlay from "./DownloadProgressOverlay.vue";
 
 const props = defineProps<{
@@ -104,6 +105,8 @@ const recoverDuration = async () => {
     /* 旧记录缺少时长时继续展示可用数据。 */
   }
 };
+const sourceBrand = computed(() => resolveSourceBrand(props.card));
+
 const metadata = computed(() => {
   const size = props.card.fileSize;
   const sizeText = size ? formatFileSize(size) : "";
@@ -111,8 +114,11 @@ const metadata = computed(() => {
     props.card.kind !== "image"
       ? formatDuration(props.card.durationSeconds || recoveredDuration.value)
       : "";
-  return [sizeText, duration].filter(Boolean).join(" · ");
+  return [sourceBrand.value?.name, sizeText, duration].filter(Boolean).join(" · ");
 });
+
+const joinBrandMeta = (text: string) =>
+  [sourceBrand.value?.name, text].filter(Boolean).join(" · ");
 </script>
 
 <template>
@@ -160,15 +166,31 @@ const metadata = computed(() => {
     <div class="info">
       <div class="title" :title="displayTitle">{{ displayTitle }}</div>
       <div class="meta">
-        <span v-if="card.status === 'running' && card.progress">
+        <BrandIcon
+          v-if="sourceBrand"
+          :name="sourceBrand.id"
+          :size="14"
+          variant="color"
+          class="meta-brand-icon"
+        />
+        <span class="meta-text" v-if="card.status === 'running' && card.progress">
+          <template v-if="sourceBrand">{{ sourceBrand.name }} · </template>
           <span v-if="progressText(card.progress)">{{ progressText(card.progress) }}</span><span v-else class="loading-feedback" role="status" aria-label="处理中">◌</span>
         </span>
-        <span v-else-if="card.status === 'failed'">下载失败</span>
-        <span v-else-if="card.status === 'cancelled'">已取消</span>
-        <span v-else-if="card.status === 'queued' || card.status === 'cancelling'">
-          {{ card.status === "cancelling" ? "取消中..." : "排队中..." }}
+        <span class="meta-text" v-else-if="card.status === 'failed'">{{ joinBrandMeta("下载失败") }}</span>
+        <span class="meta-text" v-else-if="card.status === 'cancelled'">{{ joinBrandMeta("已取消") }}</span>
+        <span class="meta-text" v-else-if="card.status === 'queued' || card.status === 'cancelling'">
+          {{ joinBrandMeta(card.status === "cancelling" ? "取消中..." : "排队中...") }}
         </span>
-        <span v-else>{{ card.fileState === "missing" ? "文件不存在" : card.fileState === "unavailable" ? "文件不可用" : metadata }}</span>
+        <span class="meta-text" v-else>
+          {{
+            card.fileState === "missing"
+              ? joinBrandMeta("文件不存在")
+              : card.fileState === "unavailable"
+                ? joinBrandMeta("文件不可用")
+                : metadata
+          }}
+        </span>
       </div>
     </div>
 
@@ -322,8 +344,22 @@ img {
   text-overflow: ellipsis;
 }
 .meta {
+  display: flex;
+  align-items: center;
+  gap: 5px;
   font-size: 13px;
+  line-height: 1.4;
   color: var(--text-sub);
+  min-width: 0;
+}
+.meta-brand-icon {
+  flex-shrink: 0;
+}
+.meta-text {
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .actions-area {

@@ -241,6 +241,118 @@ try {
   const fp = fingerprintClipboardText("https://youtu.be/jNQXAC9IVRw");
   assert.ok(!fp.includes("jNQXAC9IVRw") && !fp.includes("youtu.be"));
 
+  // 3.9 并发互斥与过期结果丢弃回归（inFlight 必须在首次 await getSignalState 前生效）
+  {
+    let raceEnabled = true;
+    let raceHome = true;
+    let raceBusy = false;
+    let raceForeground = true;
+    let raceInput = "";
+    let signalCalls = 0;
+    let raceReadCalls = 0;
+    let releaseSignal;
+    let releaseRead;
+
+    const raceCtrl = createSmartClipboardController({
+      isEnabled: () => raceEnabled,
+      isHome: () => raceHome,
+      isBusy: () => raceBusy,
+      isForeground: () => raceForeground,
+      getInput: () => raceInput,
+      setInput: (v) => {
+        raceInput = v;
+      },
+      getSignalState: () => {
+        signalCalls++;
+        return new Promise((resolve) => {
+          releaseSignal = () => resolve({ seq: 10, watching: true });
+        });
+      },
+      readClipboard: () => {
+        raceReadCalls++;
+        return new Promise((resolve) => {
+          releaseRead = () =>
+            resolve({ status: "ok", text: "https://youtu.be/jNQXAC9IVRw", message: "" });
+        });
+      },
+    });
+
+    // 第一次触发挂起在 getSignalState，此时并发进入的第二次 check 必须立即被 inFlight 拦截
+    const p1 = raceCtrl.check("startup");
+    const p2 = raceCtrl.check("focus", { seq: 10, dirty: true, watching: true });
+    assert.deepEqual(await p2, { filled: false, url: "" });
+    assert.equal(signalCalls, 1, "concurrent check must not call getSignalState twice");
+    assert.equal(raceReadCalls, 0);
+
+    // 放行 getSignalState，挂起在 readClipboard；在读取返回前窗口切到后台 -> 必须丢弃过期结果
+    releaseSignal();
+    await Promise.resolve();
+    await Promise.resolve();
+    assert.equal(raceReadCalls, 1);
+    raceForeground = false;
+    raceCtrl.invalidate();
+    releaseRead();
+    assert.deepEqual(await p1, { filled: false, url: "" });
+    assert.equal(raceInput, "", "stale result after window moved to background must be discarded");
+
+    // 恢复前台后 inFlight 已在 finally 正确释放，可再次正常填入且未被丢弃结果污染指纹
+    raceForeground = true;
+    const p3 = raceCtrl.check("focus", { seq: 11, dirty: true, watching: true });
+    releaseRead();
+    assert.deepEqual(await p3, { filled: true, url: "https://youtu.be/jNQXAC9IVRw" });
+    assert.equal(raceInput, "https://youtu.be/jNQXAC9IVRw");
+  }
+
+  // 3.10 异步读取期间用户输入、切页或关闭功能时丢弃结果，且异常时 finally 仍释放互斥锁
+  {
+    for (const mutate of [
+      (s) => { s.input = "https://typed-by-user"; },
+      (s) => { s.home = false; },
+      (s) => { s.enabled = false; },
+    ]) {
+      const state = { enabled: true, home: true, input: "" };
+      let release;
+      const c = createSmartClipboardController({
+        isEnabled: () => state.enabled,
+        isHome: () => state.home,
+        isBusy: () => false,
+        isForeground: () => true,
+        getInput: () => state.input,
+        setInput: (v) => { state.input = v; },
+        readClipboard: () => new Promise((r) => {
+          release = () => r({ status: "ok", text: "https://www.bilibili.com/video/BV1xx411c7mD", message: "" });
+        }),
+      });
+      const p = c.check("focus");
+      mutate(state);
+      release();
+      assert.deepEqual(await p, { filled: false, url: "" });
+      assert.notEqual(state.input, "https://www.bilibili.com/video/BV1xx411c7mD");
+    }
+
+    // 异常时 finally 释放 inFlight，后续调用可恢复工作
+    let shouldThrow = true;
+    let recoveredInput = "";
+    const errCtrl = createSmartClipboardController({
+      isEnabled: () => true,
+      isHome: () => true,
+      isBusy: () => false,
+      isForeground: () => true,
+      getInput: () => recoveredInput,
+      setInput: (v) => { recoveredInput = v; },
+      readClipboard: async () => {
+        if (shouldThrow) throw new Error("boom");
+        return { status: "ok", text: "https://demo.lofter.com/post/1234_5678", message: "" };
+      },
+    });
+    assert.deepEqual(await errCtrl.check("focus"), { filled: false, url: "" });
+    shouldThrow = false;
+    assert.deepEqual(await errCtrl.check("focus"), {
+      filled: true,
+      url: "https://demo.lofter.com/post/1234_5678",
+    });
+  }
+
   // 4. 源码契约检查：LinkInput 不再直接调用 navigator.clipboard.readText，保留 @paste 支持 Ctrl+V
   const linkInputSrc = readFileSync(path.join(root, "src/components/home/LinkInput.vue"), "utf8");
   assert.doesNotMatch(linkInputSrc, /navigator\.clipboard/, "LinkInput must route through utils/clipboard instead of calling navigator.clipboard directly");

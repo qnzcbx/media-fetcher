@@ -157,6 +157,86 @@ try {
   assert.equal(progressPercent(event("video","media",latest,{overallDownloaded:180,overallTotal:200})),90);
   assert.equal(progressPercent(event("audio","media",latest,{overallDownloaded:190,overallTotal:200})),95);
   assert.equal(progressPercent(event("publishing","media",latest,{overallDownloaded:200,overallTotal:200})),undefined);
+
+  // 来源平台推断：优先复用 siteId，旧记录按合法 sourceUrl 推断，非法或未知来源不伪造。
+  const { resolveSourceBrand } = await vite.ssrLoadModule("/src/utils/fileMetadata.ts");
+  assert.deepEqual(resolveSourceBrand({ siteId: "youtube", sourceUrl: "" }), { id: "youtube", name: "YouTube" });
+  assert.deepEqual(resolveSourceBrand({ siteId: "Bilibili", sourceUrl: "" }), { id: "bilibili", name: "Bilibili" });
+  assert.deepEqual(resolveSourceBrand({ siteId: "lofter", sourceUrl: "" }), { id: "lofter", name: "LOFTER" });
+  assert.deepEqual(resolveSourceBrand({ siteId: "", sourceUrl: "https://youtu.be/jNQXAC9IVRw" }), { id: "youtube", name: "YouTube" });
+  assert.deepEqual(resolveSourceBrand({ siteId: "", sourceUrl: "https://www.bilibili.com/video/BV1xx411c7mD" }), { id: "bilibili", name: "Bilibili" });
+  assert.deepEqual(resolveSourceBrand({ siteId: "", sourceUrl: "https://demo.lofter.com/post/1234_5678" }), { id: "lofter", name: "LOFTER" });
+  assert.equal(resolveSourceBrand({ siteId: "", sourceUrl: "https://youtube.com.evil.org/watch?v=jNQXAC9IVRw" }), null);
+  assert.equal(resolveSourceBrand({ siteId: "unknown", sourceUrl: "https://example.com/video" }), null);
+  assert.equal(resolveSourceBrand({ siteId: "", sourceUrl: "" }), null);
+
+  // DownloadListItem 元数据行渲染：行首 14px 品牌色图标 + 平台名 · 大小 · 时长，未知来源不展示。
+  const { createSSRApp, h } = await import("vue");
+  const { renderToString } = await import("vue/server-renderer");
+  const { default: DownloadListItem } = await vite.ssrLoadModule("/src/components/download/DownloadListItem.vue");
+  const renderRow = (card) =>
+    renderToString(createSSRApp({ render: () => h(DownloadListItem, { card, busy: false }) }));
+
+  const ytHtml = await renderRow({
+    id: "yt-1", taskId: "t1", siteId: "youtube", kind: "video", title: "Demo",
+    sourceUrl: "https://www.youtube.com/watch?v=jNQXAC9IVRw", finalPath: "C:\\dl\\Demo.mp4",
+    thumbnail: "", createdAt: "", completedAt: "", status: "done", resourceId: 1, codec: "h264",
+    fileSize: Math.round(234.2 * 1024 * 1024), durationSeconds: 377,
+  });
+  assert.match(ytHtml, /brand-icon--color/);
+  assert.match(ytHtml, /width="14"/);
+  assert.match(ytHtml, /YouTube · 234\.2 MB · 06:17/);
+
+  const lofterHtml = await renderRow({
+    id: "lf-1", taskId: "t2", siteId: "", kind: "image", title: "Img",
+    sourceUrl: "https://demo.lofter.com/post/1234_5678", finalPath: "C:\\dl\\Img.jpg",
+    thumbnail: "", createdAt: "", completedAt: "", status: "done", resourceId: 1, codec: "",
+    fileSize: Math.round(18.6 * 1024 * 1024),
+  });
+  assert.match(lofterHtml, /brand-icon--color/);
+  assert.match(lofterHtml, /LOFTER · 18\.6 MB/);
+
+  const unknownHtml = await renderRow({
+    id: "uk-1", taskId: "t3", siteId: "", kind: "video", title: "Legacy",
+    sourceUrl: "https://example.com/unknown", finalPath: "C:\\dl\\Legacy.mp4",
+    thumbnail: "", createdAt: "", completedAt: "", status: "done", resourceId: 1, codec: "",
+    fileSize: Math.round(13.9 * 1024 * 1024), durationSeconds: 255,
+  });
+  assert.doesNotMatch(unknownHtml, /brand-icon/);
+  assert.match(unknownHtml, /13\.9 MB · 04:15/);
+
+  // DownloadCard 左上角来源图标：仅常驻白色品牌图标、悬停显示平台名、选择模式让位于选择操作、未知来源不展示。
+  const { default: DownloadCard } = await vite.ssrLoadModule("/src/components/download/DownloadCard.vue");
+  const renderCard = (card, extra = {}) =>
+    renderToString(createSSRApp({ render: () => h(DownloadCard, { card, busy: false, ...extra }) }));
+
+  const cardYtHtml = await renderCard({
+    id: "card-yt", taskId: "t1", siteId: "youtube", kind: "video", title: "Demo",
+    sourceUrl: "https://www.youtube.com/watch?v=jNQXAC9IVRw", finalPath: "C:\\dl\\Demo.mp4",
+    thumbnail: "", createdAt: "", completedAt: "", status: "done", resourceId: 1, codec: "h264",
+  });
+  assert.match(cardYtHtml, /class="source-badge"/);
+  assert.match(cardYtHtml, /title="YouTube"/);
+  assert.match(cardYtHtml, /width="15"/);
+  assert.match(cardYtHtml, /brand-icon--mono/);
+
+  const cardSelectingHtml = await renderCard(
+    {
+      id: "card-sel", taskId: "t1", siteId: "bilibili", kind: "video", title: "Demo",
+      sourceUrl: "https://www.bilibili.com/video/BV1xx411c7mD", finalPath: "C:\\dl\\Demo.mp4",
+      thumbnail: "", createdAt: "", completedAt: "", status: "done", resourceId: 1, codec: "h264",
+    },
+    { selecting: true },
+  );
+  assert.doesNotMatch(cardSelectingHtml, /class="source-badge"/);
+
+  const cardUnknownHtml = await renderCard({
+    id: "card-uk", taskId: "t1", siteId: "", kind: "image", title: "Legacy",
+    sourceUrl: "https://example.com/img.jpg", finalPath: "C:\\dl\\Legacy.jpg",
+    thumbnail: "", createdAt: "", completedAt: "", status: "done", resourceId: 1, codec: "",
+  });
+  assert.doesNotMatch(cardUnknownHtml, /class="source-badge"/);
+
   console.log("下载图库任务状态回归通过");
 } finally {
   await vite.close();

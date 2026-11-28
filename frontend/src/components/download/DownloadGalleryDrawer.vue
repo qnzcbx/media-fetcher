@@ -116,6 +116,7 @@ const handleRemove = () => {
         >
           <DownloadCard
             hideMore
+            :selecting="selectedCount > 0"
             :card="card"
             :busy="busy"
             @action="(item, action) => selectedCount === 0 && emit('action', item, action)"

@@ -1,0 +1,3 @@
+# Preserve exact upstream ASCII-armored GPG key bytes (LF) on Windows checkouts
+# so SHA-256 verification matches the official yt-dlp public key regardless of core.autocrlf.
+packaging/windows/keys/*.key -text

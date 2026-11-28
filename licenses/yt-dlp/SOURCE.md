@@ -41,6 +41,9 @@
    - `yt-dlp-ejs` 上游源码：<https://github.com/yt-dlp/ejs>
    - `mutagen` 上游源码：<https://github.com/quodlibet/mutagen>
    - `CPython` 上游源码：<https://github.com/python/cpython>
-3. **聚合调用边界**：
+3. **对应源码分发与索取说明（GPLv3 §6）**：
+   - 安装包与便携版 `licenses/` 目录随附完整许可全文、第三方依赖清单及上述固定版本源码获取说明与 SHA-256 校验值，**不在二进制安装包内嵌源码压缩包本体**。
+   - 若上游对应源码链接发生失效或迁移，用户可通过 Media Fetcher 仓库 Issue 联系维护者获取同版本对应源码归档与构建材料。
+4. **聚合调用边界**：
    - Media Fetcher 仅以独立外部进程方式（`os/exec`）调用 `tools\yt-dlp\yt-dlp.exe` 提取公开视频 JSON 元数据（`--skip-download --dump-single-json`），不嵌入 Python 解释器或导入 `yt-dlp` 代码。
    - 用户可通过设置环境变量 `MEDIA_FETCHER_YTDLP_PATH` 自由替换为自行构建的 `yt-dlp` 版本。

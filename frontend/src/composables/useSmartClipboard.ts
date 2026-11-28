@@ -1,5 +1,5 @@
 import { onMounted, onUnmounted, ref, watch, type Ref } from "vue";
-import { isMyGo } from "mygo-runtime";
+import { isMyGo, onWindowActive, windowActive } from "mygo-runtime";
 import { DesktopService, events } from "../mygo";
 import {
   createSmartClipboardController,
@@ -18,6 +18,13 @@ export interface UseSmartClipboardParams {
 
 export const useSmartClipboard = (params: UseSmartClipboardParams) => {
   const autoFillNotice = ref("");
+  const isForeground = ref(
+    isMyGo()
+      ? windowActive()
+      : typeof document === "undefined"
+        ? true
+        : document.visibilityState !== "hidden",
+  );
   let noticeTimer: ReturnType<typeof setTimeout> | undefined;
 
   const clearAutoFillNotice = () => {
@@ -41,6 +48,7 @@ export const useSmartClipboard = (params: UseSmartClipboardParams) => {
     isEnabled: () => params.autoDetectEnabled.value,
     isHome: () => params.currentView.value === "home",
     isBusy: () => params.isBusy.value,
+    isForeground: () => isForeground.value,
     getInput: () => params.inputUrl.value,
     setInput: (value) => {
       params.onClearError?.();
@@ -66,11 +74,24 @@ export const useSmartClipboard = (params: UseSmartClipboardParams) => {
   };
 
   let offSignal: (() => void) | undefined;
+  let offWindowActive: (() => void) | undefined;
 
   const onWindowFocus = () => {
-    // 浏览器开发模式或原生事件未送达时的轻量补充触发（受控制器去重与守卫保护）。
+    isForeground.value = true;
     if (!isMyGo()) {
       triggerCheck("focus");
+    }
+  };
+
+  const onWindowBlur = () => {
+    isForeground.value = false;
+    controller.invalidate();
+  };
+
+  const onVisibilityChange = () => {
+    if (typeof document !== "undefined" && document.visibilityState === "hidden") {
+      isForeground.value = false;
+      controller.invalidate();
     }
   };
 
@@ -78,31 +99,66 @@ export const useSmartClipboard = (params: UseSmartClipboardParams) => {
     if (next === "home" && prev && prev !== "home") {
       triggerCheck("return-home");
     } else if (next !== "home") {
+      controller.invalidate();
       clearAutoFillNotice();
     }
   });
 
   watch(params.isBusy, (busy) => {
-    if (busy) clearAutoFillNotice();
+    if (busy) {
+      controller.invalidate();
+      clearAutoFillNotice();
+    }
+  });
+
+  watch(params.autoDetectEnabled, (enabled) => {
+    if (!enabled) {
+      controller.invalidate();
+      clearAutoFillNotice();
+    }
+  });
+
+  watch(params.inputUrl, (value) => {
+    if (value.trim() !== "") {
+      controller.invalidate();
+    }
   });
 
   onMounted(() => {
     if (isMyGo()) {
+      isForeground.value = windowActive();
+      offWindowActive = onWindowActive((active) => {
+        isForeground.value = active;
+        if (!active) {
+          controller.invalidate();
+        }
+      });
       offSignal = events.clipboardSignal.on((signal) => {
+        isForeground.value = true;
         triggerCheck("focus", signal);
       });
     }
     if (typeof window !== "undefined") {
       window.addEventListener("focus", onWindowFocus);
+      window.addEventListener("blur", onWindowBlur);
+    }
+    if (typeof document !== "undefined") {
+      document.addEventListener("visibilitychange", onVisibilityChange);
     }
     triggerCheck("startup");
   });
 
   onUnmounted(() => {
+    controller.invalidate();
     clearAutoFillNotice();
     offSignal?.();
+    offWindowActive?.();
     if (typeof window !== "undefined") {
       window.removeEventListener("focus", onWindowFocus);
+      window.removeEventListener("blur", onWindowBlur);
+    }
+    if (typeof document !== "undefined") {
+      document.removeEventListener("visibilitychange", onVisibilityChange);
     }
   });
 

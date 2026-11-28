@@ -1,3 +1,33 @@
+import { brands, type BrandName } from "../assets/brands";
+import { getSiteIdFromURL } from "./url";
+
+export interface SourceBrand {
+  id: BrandName;
+  name: string;
+}
+
+const isBrandName = (value: string): value is BrandName =>
+  Object.prototype.hasOwnProperty.call(brands, value);
+
+// 优先复用记录已有的 siteId；旧记录缺少 siteId 时按合法 sourceUrl 域名推断，无法识别时返回 null 不伪造来源。
+export function resolveSourceBrand(
+  record: { siteId?: string; sourceUrl?: string } | null | undefined,
+): SourceBrand | null {
+  if (!record) return null;
+  const direct = (record.siteId ?? "").trim().toLowerCase();
+  if (direct && isBrandName(direct)) {
+    return { id: direct, name: brands[direct].name };
+  }
+  const rawUrl = (record.sourceUrl ?? "").trim();
+  if (rawUrl) {
+    const inferred = getSiteIdFromURL(rawUrl);
+    if (inferred && isBrandName(inferred)) {
+      return { id: inferred, name: brands[inferred].name };
+    }
+  }
+  return null;
+}
+
 export function formatFileSize(bytes: number) {
   const units = ["B", "KB", "MB", "GB"];
   let unit = 0;

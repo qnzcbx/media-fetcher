@@ -20,28 +20,25 @@ try {
       theme: "dark",
       defaultAudioFormat: "mp3",
       downloadDirectory: "",
-      autoDetectClipboard: false,
-      clipboardNoticeDismissed: false,
+      autoDetectClipboard: true,
     },
   );
   assert.deepEqual(
-    parsePreferences(JSON.stringify({ theme: "dark", defaultAudioFormat: "wav", autoDetectClipboard: true })),
+    parsePreferences(JSON.stringify({ theme: "dark", defaultAudioFormat: "wav", autoDetectClipboard: false })),
     {
       theme: "dark",
       defaultAudioFormat: "m4a",
       downloadDirectory: "",
-      autoDetectClipboard: true,
-      clipboardNoticeDismissed: false,
+      autoDetectClipboard: false,
     },
   );
   assert.deepEqual(
-    normalizePreferences({ theme: "light", defaultAudioFormat: "mp3", autoDetectClipboard: "yes", clipboardNoticeDismissed: 1 }),
+    normalizePreferences({ theme: "light", defaultAudioFormat: "mp3", autoDetectClipboard: "yes" }),
     {
       theme: "light",
       defaultAudioFormat: "mp3",
       downloadDirectory: "",
-      autoDetectClipboard: false,
-      clipboardNoticeDismissed: false,
+      autoDetectClipboard: true,
     },
   );
 
@@ -49,8 +46,7 @@ try {
     theme: "dark",
     defaultAudioFormat: "mp3",
     downloadDirectory: "C:\\媒体 文件",
-    autoDetectClipboard: true,
-    clipboardNoticeDismissed: true,
+    autoDetectClipboard: false,
   };
   assert.deepEqual(parsePreferences(JSON.stringify(custom)), custom);
   for (const downloadDirectory of [22, {}, "relative/path"]) {

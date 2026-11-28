@@ -56,8 +56,8 @@ Media Fetcher 是一款基于 **Go Core + MyGo (v0.10.0) + Vue 3** 构建的本�
 
 从仓库的 **GitHub Releases** 页面获取最新 Windows (amd64) 完整随包构建产物（**开箱即用，无需自行安装 Node.js、Python、FFmpeg、ffprobe 或 yt-dlp，也无需修改系统 PATH**）：
 
-- **安装包**：`media-fetcher-setup-<version>-amd64.exe`（NSIS 当前用户级安装向导，内置完整运行组件与 Microsoft Edge WebView2 运行时缺失引导；卸载不会删除用户已下载的媒体文件）
-- **便携版**：`media-fetcher-<version>-windows-amd64-portable.zip`（包含完整运行组件与许可证文件，解压至任意目录——支持中文与空格路径——直接运行 `media-fetcher.exe`）
+- **安装包**：`mfetch-setup-<version>-amd64.exe`（NSIS 当前用户级安装向导，应用名与快捷方式为 `MFetch`，内置完整运行组件与 Microsoft Edge WebView2 运行时缺失引导；卸载不会删除用户已下载的媒体文件）
+- **便携版**：`mfetch-<version>-windows-amd64-portable.zip`（包含完整运行组件与许可证文件，解压至任意目录——支持中文与空格路径——直接运行 `MFetch.exe`）
 - **完整性校验**：`SHA256SUMS.txt`（下载后可在 PowerShell 中运行 `Get-FileHash <文件名> -Algorithm SHA256` 核对）
 
 > **当前发布限制说明**：
@@ -149,8 +149,8 @@ pnpm run release:windows
 ```
 
 完整发布构建产物位于 `dist/windows-amd64/`：
-- `dist/windows-amd64/media-fetcher-setup-1.0.0-amd64.exe`（含随包运行时与 WebView2 引导的 NSIS 安装包）
-- `dist/windows-amd64/media-fetcher-1.0.0-windows-amd64-portable.zip`（含完整随包运行时与许可证的便携版）
+- `dist/windows-amd64/mfetch-setup-1.0.0-amd64.exe`（含随包运行时与 WebView2 引导的 NSIS 安装包）
+- `dist/windows-amd64/mfetch-1.0.0-windows-amd64-portable.zip`（含完整随包运行时与许可证的便携版）
 - `dist/windows-amd64/SHA256SUMS.txt` 与 `dist/windows-amd64/THIRD_PARTY_NOTICES.md`
 
 ### 自动化测试

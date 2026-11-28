@@ -1,20 +1,34 @@
-﻿; Media Fetcher Windows Installer Hook — Microsoft Edge WebView2 Runtime Detection & Bootstrap
+﻿; Media Fetcher Windows Installer Hook
 ; Included by MyGo v0.10.0 via mygo.json windows.installerInclude.
-; Official reference: https://learn.microsoft.com/microsoft-edge/webview2/concepts/distribution
 ;
-; Behavior:
-; 1. Detects Evergreen WebView2 Runtime pv under EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}
-;    across HKLM (32-bit/WOW6432Node & 64-bit views) and HKCU (32-bit & 64-bit views).
-; 2. If already installed (pv non-empty and != "0.0.0.0"), does nothing.
-; 3. Only when missing: asks user (interactive mode) or downloads Microsoft's official Evergreen Bootstrapper,
-;    verifies download origin + Authenticode signature ("Valid" & "Microsoft Corporation"), runs silent install,
-;    checks exit code (0 / 3010), and re-verifies registry pv post-install.
-; 4. On offline / download failure / signature failure / install failure / user cancel: aborts cleanly with
-;    a non-zero error level and NEVER falsely reports installation succeeded.
-; 5. Does NOT define customUnInstall — never uninstalls user's WebView2 Runtime or alters system settings.
+; Responsibilities:
+; 1. customInit (.onInit): Single-instance mutex guard to prevent two concurrent installers
+;    from racing on $INSTDIR\tools\* (which causes "Error opening file for writing").
+; 2. customInstall (after File /r):
+;    a) Post-install runtime integrity verification against $INSTDIR\tools\manifest.json
+;       (ensures missing, locked-and-skipped, unwritable, or AV-quarantined files NEVER report success).
+;    b) Microsoft Edge WebView2 Evergreen Runtime detection & verified bootstrap
+;       (https://learn.microsoft.com/microsoft-edge/webview2/concepts/distribution).
+; 3. Never defines customUnInstall — never uninstalls user WebView2 or deletes user data/downloads.
 
 !define WEBVIEW2_CLIENT_KEY "SOFTWARE\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}"
 !define WEBVIEW2_BOOTSTRAPPER_URL "https://go.microsoft.com/fwlink/p/?LinkId=2124703"
+!define SETUP_MUTEX_NAME "Local\MFetchSetupSingleInstance"
+
+!macro customInit
+  Push $0
+  Push $1
+  System::Call 'kernel32::CreateMutex(i 0, i 0, t "${SETUP_MUTEX_NAME}") i .r0 ?e'
+  Pop $1
+  StrCmp $1 183 0 setup_mutex_ok
+  IfSilent +2
+  MessageBox MB_OK|MB_ICONEXCLAMATION "MFetch 安装程序已在运行中，请先完成或关闭已有安装窗口后再重试。" /SD IDOK
+  SetErrorLevel 1618
+  Abort "另一个 MFetch 安装程序正在运行"
+setup_mutex_ok:
+  Pop $1
+  Pop $0
+!macroend
 
 Function CheckWebView2Installed
   Push $1
@@ -63,13 +77,93 @@ FunctionEnd
   Push $0
   Push $1
   Push $2
+  Push $3
 
+  ; --- Step A: Post-install runtime & executable integrity verification (tools\manifest.json) ---
+  DetailPrint "正在校验安装文件与随包运行组件完整性..."
+  IfFileExists "$INSTDIR\MFetch.exe" mf_exe_ok
+  IfSilent +2
+  MessageBox MB_OK|MB_ICONSTOP "安装未完成：无法写入主程序文件 ($INSTDIR\MFetch.exe)。$\r$\n$\r$\n请检查安装目录写入权限、关闭占用进程或尝试更换安装目录后重试。" /SD IDOK
+  SetErrorLevel 50
+  Abort "主程序文件写入失败"
+
+mf_exe_ok:
+  IfFileExists "$INSTDIR\tools\manifest.json" mf_verify_manifest
+  ; Dev builds without bundled tools do not include tools\manifest.json; only enforce when manifest is present.
+  Goto mf_verify_done
+
+mf_verify_manifest:
+  StrCpy $1 "$WINDIR\Sysnative\WindowsPowerShell\v1.0\powershell.exe"
+  IfFileExists $1 +2
+  StrCpy $1 "$SYSDIR\WindowsPowerShell\v1.0\powershell.exe"
+  IfFileExists $1 +5
+  IfSilent +2
+  MessageBox MB_OK|MB_ICONSTOP "系统缺少 PowerShell，无法校验随包运行组件完整性。请手动核验后重试。" /SD IDOK
+  SetErrorLevel 51
+  Abort "缺少 PowerShell，无法校验安装完整性"
+
+  InitPluginsDir
+  FileOpen $2 "$PLUGINSDIR\verify-manifest.ps1" w
+  FileWrite $2 "$$ErrorActionPreference = 'Stop'$\r$\n"
+  FileWrite $2 "$$dir = $$env:MF_INSTALL_DIR$\r$\n"
+  FileWrite $2 "$$errFile = $$env:MF_VERIFY_ERR$\r$\n"
+  FileWrite $2 "$$mfPath = Join-Path $$dir 'tools\manifest.json'$\r$\n"
+  FileWrite $2 "try {$\r$\n"
+  FileWrite $2 "  $$mf = [IO.File]::ReadAllText($$mfPath, [Text.UTF8Encoding]::new($$false)) | ConvertFrom-Json$\r$\n"
+  FileWrite $2 "  $$sha = [Security.Cryptography.SHA256]::Create()$\r$\n"
+  FileWrite $2 "  $$bad = [Collections.Generic.List[string]]::new()$\r$\n"
+  FileWrite $2 "  foreach ($$entry in $$mf.files) {$\r$\n"
+  FileWrite $2 "    $$rel = [string]$$entry.path$\r$\n"
+  FileWrite $2 "    $$full = Join-Path $$dir ($$rel -replace '/', '\')$\r$\n"
+  FileWrite $2 "    if (-not (Test-Path -LiteralPath $$full)) { $$bad.Add('missing: ' + $$rel); continue }$\r$\n"
+  FileWrite $2 "    $$fi = Get-Item -LiteralPath $$full$\r$\n"
+  FileWrite $2 "    if ($$fi.Length -ne [int64]$$entry.size) { $$bad.Add('size-mismatch: ' + $$rel); continue }$\r$\n"
+  FileWrite $2 "    $$fs = [IO.File]::Open($$full, [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::ReadWrite)$\r$\n"
+  FileWrite $2 "    try { $$hash = ([BitConverter]::ToString($$sha.ComputeHash($$fs)) -replace '-', '').ToLowerInvariant() } finally { $$fs.Close() }$\r$\n"
+  FileWrite $2 "    if ($$hash -ne ([string]$$entry.sha256).ToLowerInvariant()) { $$bad.Add('hash-mismatch: ' + $$rel) }$\r$\n"
+  FileWrite $2 "  }$\r$\n"
+  FileWrite $2 "  $$sha.Dispose()$\r$\n"
+  FileWrite $2 "  if ($$bad.Count -gt 0) {$\r$\n"
+  FileWrite $2 "    $$summary = ($$bad | Select-Object -First 3) -join '; '$\r$\n"
+  FileWrite $2 "    if ($$bad.Count -gt 3) { $$summary += ' (+' + ($$bad.Count - 3) + ' more)' }$\r$\n"
+  FileWrite $2 "    [IO.File]::WriteAllText($$errFile, $$summary, [Text.Encoding]::ASCII)$\r$\n"
+  FileWrite $2 "    exit 52$\r$\n"
+  FileWrite $2 "  }$\r$\n"
+  FileWrite $2 "  exit 0$\r$\n"
+  FileWrite $2 "} catch {$\r$\n"
+  FileWrite $2 "  [IO.File]::WriteAllText($$errFile, $$_.Exception.Message, [Text.Encoding]::ASCII)$\r$\n"
+  FileWrite $2 "  exit 53$\r$\n"
+  FileWrite $2 "}$\r$\n"
+  FileClose $2
+
+  System::Call 'Kernel32::SetEnvironmentVariable(t "MF_VERIFY_SCRIPT", t "$PLUGINSDIR\verify-manifest.ps1")'
+  System::Call 'Kernel32::SetEnvironmentVariable(t "MF_INSTALL_DIR", t "$INSTDIR")'
+  System::Call 'Kernel32::SetEnvironmentVariable(t "MF_VERIFY_ERR", t "$PLUGINSDIR\verify-err.txt")'
+  nsExec::Exec '"$1" -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command "& ([scriptblock]::Create([IO.File]::ReadAllText($$env:MF_VERIFY_SCRIPT)))"'
+  Pop $2
+  StrCmp $2 "0" mf_verify_done
+
+  StrCpy $3 "部分随包运行组件未正确写入或已被修改"
+  IfFileExists "$PLUGINSDIR\verify-err.txt" 0 mf_verify_fail_msg
+  FileOpen $0 "$PLUGINSDIR\verify-err.txt" r
+  FileRead $0 $3
+  FileClose $0
+
+mf_verify_fail_msg:
+  IfSilent +2
+  MessageBox MB_OK|MB_ICONSTOP "安装未通过完整性校验：$3$\r$\n$\r$\n常见原因：目标文件正被其他程序占用、安全软件实时扫描或隔离了组件，或安装目录权限受限。请关闭相关程序、检查安装目录权限后重新安装，或改用便携版 ZIP。" /SD IDOK
+  SetErrorLevel 52
+  Abort "随包运行组件完整性校验失败"
+
+mf_verify_done:
+
+  ; --- Step B: WebView2 Evergreen Runtime Detection & Bootstrap ---
   Call CheckWebView2Installed
   StrCmp $0 "1" wv2_done
 
   ; WebView2 Runtime is missing. Prompt in interactive mode; proceed directly in silent (/S) mode.
   IfSilent wv2_install
-  MessageBox MB_YESNO|MB_ICONQUESTION "未检测到 Microsoft Edge WebView2 运行时，Media Fetcher 需要该系统组件才能正常显示界面。$\r$\n$\r$\n是否现在从 Microsoft 官方服务器下载并安装 Evergreen WebView2 运行时？" IDYES wv2_install
+  MessageBox MB_YESNO|MB_ICONQUESTION "未检测到 Microsoft Edge WebView2 运行时，MFetch 需要该系统组件才能正常显示界面。$\r$\n$\r$\n是否现在从 Microsoft 官方服务器下载并安装 Evergreen WebView2 运行时？" IDYES wv2_install
   MessageBox MB_OK|MB_ICONEXCLAMATION "已取消 WebView2 运行时安装。请先前往 Microsoft 官网安装 WebView2 运行时后再重新运行安装程序。" /SD IDOK
   SetErrorLevel 1602
   Abort "用户取消了 WebView2 运行时安装"
@@ -185,6 +279,7 @@ wv2_recheck:
   Abort "WebView2 复检未通过"
 
 wv2_done:
+  Pop $3
   Pop $2
   Pop $1
   Pop $0

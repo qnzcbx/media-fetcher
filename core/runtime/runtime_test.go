@@ -198,3 +198,50 @@ func TestHideWindow_WindowsSetsCreateNoWindow(t *testing.T) {
 		t.Fatalf("HideWindow did not set SysProcAttr.HideWindow")
 	}
 }
+
+func TestResolveMediaTools_SystemPathRequiresSameDirectoryPair(t *testing.T) {
+	clearRuntimeEnv(t)
+	exeDir := t.TempDir()
+	appData := t.TempDir()
+	dirFF := t.TempDir()
+	dirFP := t.TempDir()
+
+	// dirFF 只有 ffmpeg，dirFP 只有 ffprobe；系统 PATH 回退不得跨目录混配
+	writeDummyFile(t, filepath.Join(dirFF, ExeName("ffmpeg")))
+	writeDummyFile(t, filepath.Join(dirFP, ExeName("ffprobe")))
+	t.Setenv("PATH", dirFF+string(os.PathListSeparator)+dirFP)
+
+	_, err := ResolveMediaTools(Options{ExeDir: exeDir, AppDataDir: appData})
+	if !errors.Is(err, ErrFFmpegNotFound) {
+		t.Fatalf("expected ErrFFmpegNotFound when PATH has split ffmpeg/ffprobe directories, got: %v", err)
+	}
+
+	// 若后续 PATH 目录包含完整配对，则命中该完整配对目录
+	dirBoth := t.TempDir()
+	bothFF := writeDummyFile(t, filepath.Join(dirBoth, ExeName("ffmpeg")))
+	bothFP := writeDummyFile(t, filepath.Join(dirBoth, ExeName("ffprobe")))
+	t.Setenv("PATH", dirFF+string(os.PathListSeparator)+dirFP+string(os.PathListSeparator)+dirBoth)
+
+	got, err := ResolveMediaTools(Options{ExeDir: exeDir, AppDataDir: appData})
+	if err != nil {
+		t.Fatalf("expected paired PATH directory to resolve, got err: %v", err)
+	}
+	if got.Source != SourceSystem || got.FFmpeg.Path != bothFF || got.FFprobe.Path != bothFP {
+		t.Fatalf("expected paired system tools from %s, got: %+v", dirBoth, got)
+	}
+}
+
+func TestCheckMediaVersionCompatibility(t *testing.T) {
+	if err := CheckMediaVersionCompatibility("n9.0.2-39-g7adfbe40dc-20261031", "n9.0.2-39-g7adfbe40dc-20261031"); err != nil {
+		t.Fatalf("same version should be compatible: %v", err)
+	}
+	if err := CheckMediaVersionCompatibility("n9.0.2-39-g7adfbe40dc", "9.1.0"); err != nil {
+		t.Fatalf("same major version should be compatible: %v", err)
+	}
+	if err := CheckMediaVersionCompatibility("N-117423-gabcdef", "7.1.0"); err != nil {
+		t.Fatalf("master snapshot N-* should not be falsely rejected: %v", err)
+	}
+	if err := CheckMediaVersionCompatibility("n9.0.2-39-g7adfbe40dc", "7.1.1-essentials_build"); err == nil {
+		t.Fatalf("mismatched major versions (9 vs 7) must return incompatibility error")
+	}
+}

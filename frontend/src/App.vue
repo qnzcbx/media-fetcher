@@ -77,7 +77,6 @@ const {
   setDefaultAudioFormat,
   setDownloadDirectory,
   setAutoDetectClipboard,
-  dismissClipboardNotice,
 } = usePreferences();
 
 // State
@@ -317,32 +316,6 @@ const handleUnlock = () => {
           {{ autoFillNotice }}
         </div>
 
-        <div
-          v-if="!mediaInfo && !preferences.clipboardNoticeDismissed"
-          class="clipboard-consent"
-          role="note"
-        >
-          <span class="clipboard-consent__text">
-            可开启「自动识别剪贴板链接」：仅在进入或返回首页且输入框为空时读取本地剪贴板，不记录或上传内容。
-          </span>
-          <div class="clipboard-consent__actions">
-            <button
-              type="button"
-              class="clipboard-consent__btn clipboard-consent__btn--primary"
-              @click="handleToggleAutoDetectClipboard(true)"
-            >
-              开启
-            </button>
-            <button
-              type="button"
-              class="clipboard-consent__btn"
-              @click="dismissClipboardNotice"
-            >
-              暂不开启
-            </button>
-          </div>
-        </div>
-
         <div class="error-msg" v-if="!mediaInfo && (parseError || credentialError)" role="alert">
           {{ parseError || credentialError }}
         </div>
@@ -506,59 +479,6 @@ const handleUnlock = () => {
   font-size: 12px;
   color: var(--selection-text);
   background: var(--selection-bg);
-}
-
-.clipboard-consent {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  margin-top: 14px;
-  padding: 10px 14px;
-  border-radius: 10px;
-  border: 1px solid var(--border);
-  background: var(--card-bg);
-  font-size: 12px;
-  line-height: 1.5;
-  color: var(--text-assist);
-}
-
-.clipboard-consent__text {
-  flex: 1;
-  min-width: 0;
-}
-
-.clipboard-consent__actions {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  flex-shrink: 0;
-}
-
-.clipboard-consent__btn {
-  padding: 4px 10px;
-  border-radius: 6px;
-  border: 1px solid var(--border);
-  background: transparent;
-  color: var(--text-main);
-  font-size: 12px;
-  cursor: pointer;
-  transition: background-color 0.16s ease, border-color 0.16s ease;
-}
-
-.clipboard-consent__btn:hover {
-  background: var(--hover-bg);
-}
-
-.clipboard-consent__btn--primary {
-  border-color: var(--primary-hover);
-  background: var(--primary);
-  color: var(--primary-text);
-  font-weight: 500;
-}
-
-.clipboard-consent__btn--primary:hover {
-  background: var(--primary-hover);
 }
 
 .fade-view-enter-active,

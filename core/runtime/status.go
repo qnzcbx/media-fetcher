@@ -65,6 +65,40 @@ func parseFFmpegVersion(line string) string {
 	return strings.TrimSpace(line)
 }
 
+// ExtractFFmpegMajorVersion 从标准发布版本号（如 n9.0.2-...、7.1.1、8.0）提取主版本号；
+// 对于纯开发快照（如 N-117423-g...）返回 (0, false) 以避免误拒。
+func ExtractFFmpegMajorVersion(ver string) (int, bool) {
+	v := strings.TrimSpace(ver)
+	if v == "" {
+		return 0, false
+	}
+	// N-117423-... 属于 FFmpeg master 计数快照，非发行主版本号。
+	if strings.HasPrefix(v, "N-") {
+		return 0, false
+	}
+	v = strings.TrimPrefix(v, "n")
+	v = strings.TrimPrefix(v, "v")
+	m := semverRE.FindStringSubmatch(v)
+	if len(m) < 3 {
+		return 0, false
+	}
+	var major int
+	if _, err := fmt.Sscanf(m[1], "%d", &major); err != nil || major <= 0 {
+		return 0, false
+	}
+	return major, true
+}
+
+// CheckMediaVersionCompatibility 校核 FFmpeg 与 ffprobe 主版本是否一致，避免跨代混用导致封装或探测行为不一致。
+func CheckMediaVersionCompatibility(ffmpegVer, ffprobeVer string) error {
+	ffMajor, okFF := ExtractFFmpegMajorVersion(ffmpegVer)
+	fpMajor, okFP := ExtractFFmpegMajorVersion(ffprobeVer)
+	if okFF && okFP && ffMajor != fpMajor {
+		return fmt.Errorf("FFmpeg (%s) 与 ffprobe (%s) 主版本不兼容，请确保两者来自同一套 FFmpeg 构建", ffmpegVer, ffprobeVer)
+	}
+	return nil
+}
+
 func inspectYTDLP(ctx context.Context, opts Options) ComponentStatus {
 	st := ComponentStatus{
 		Key:    "ytdlp",
@@ -151,6 +185,11 @@ func inspectMedia(ctx context.Context, opts Options) ComponentStatus {
 	}
 	ffVer := parseFFmpegVersion(ffLine)
 	fpVer := parseFFmpegVersion(fpLine)
+	if compatErr := CheckMediaVersionCompatibility(ffVer, fpVer); compatErr != nil {
+		st.Version = ffVer
+		st.Detail = compatErr.Error()
+		return st
+	}
 	st.Available = true
 	st.Version = ffVer
 	if fpVer != "" && fpVer != ffVer {

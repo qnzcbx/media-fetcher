@@ -1,5 +1,5 @@
 {
-  "name": "media-fetcher",
+  "name": "MFetch",
   "identifier": "com.media.fetcher",
   "version": "1.0.0",
   "main": "./cmd/media-fetcher-app",
@@ -11,6 +11,8 @@
   "icon": "assets/branding/icon.png",
   "macos": { "icon": "assets/branding/icon.icns" },
   "windows": {
+    "displayName": "MFetch",
+    "installDirName": "MFetch",
     "installerInclude": "packaging/windows/webview2-installer.nsh"
   },
   "resources": ["THIRD_PARTY_NOTICES.md"],

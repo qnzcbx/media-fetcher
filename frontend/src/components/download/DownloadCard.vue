@@ -4,10 +4,18 @@ import { Image, Play, Music, Ellipsis } from "@lucide/vue";
 import { downloadAPI } from "../../api/download";
 import type { GalleryCard } from "../../composables/useDownloads";
 import { useActionMenu } from "../../composables/useActionMenu";
+import { resolveSourceBrand } from "../../utils/fileMetadata";
+import BrandIcon from "../icons/BrandIcon.vue";
 import DownloadProgressOverlay from "./DownloadProgressOverlay.vue";
 
-const props = defineProps<{ card: GalleryCard; busy: boolean; hideMore?: boolean }>();
+const props = defineProps<{
+  card: GalleryCard;
+  busy: boolean;
+  hideMore?: boolean;
+  selecting?: boolean;
+}>();
 const emit = defineEmits<{ action: [card: GalleryCard, action: string]; cancel: [] }>();
+const sourceBrand = computed(() => resolveSourceBrand(props.card));
 const thumbnail = ref("");
 const imageFailed = ref(false);
 const rootRef = ref<HTMLElement | null>(null);
@@ -70,6 +78,15 @@ const pick = (action: string) => {
         @error="imageFailed = true"
       />
       <Image class="placeholder" aria-hidden="true" />
+      <span
+        v-if="sourceBrand && !selecting"
+        class="source-badge"
+        :title="sourceBrand.name"
+        :aria-label="sourceBrand.name"
+      >
+        <BrandIcon :name="sourceBrand.id" :size="15" variant="mono" />
+        <span class="source-badge__label" aria-hidden="true">{{ sourceBrand.name }}</span>
+      </span>
       <Music
         v-if="card.kind === 'audio' && card.status === 'done'"
         class="play"
@@ -149,6 +166,40 @@ img {
   width: 23px;
   height: 23px;
 }
+.source-badge {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  z-index: 2;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 7px;
+  background: rgba(19, 21, 26, 0.58);
+  color: #ffffff;
+  backdrop-filter: blur(4px);
+}
+.source-badge__label {
+  position: absolute;
+  left: calc(100% + 4px);
+  top: 50%;
+  transform: translateY(-50%);
+  padding: 2px 7px;
+  border-radius: 6px;
+  background: rgba(19, 21, 26, 0.78);
+  color: #ffffff;
+  font-size: 11px;
+  line-height: 1.4;
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.16s ease;
+}
+.source-badge:hover .source-badge__label {
+  opacity: 1;
+}
 .play {
   position: absolute;
   top: 50%;
@@ -164,13 +215,13 @@ img {
   fill: #fff;
 }
 .cover :deep(.shade) {
-  z-index: 2;
+  z-index: 3;
 }
 .more {
   position: absolute;
   right: 5px;
   top: 5px;
-  z-index: 3;
+  z-index: 4;
   display: grid;
   place-items: center;
   border: 0;

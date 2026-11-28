@@ -18,8 +18,9 @@
 2. **BtbN 构建脚本与全部第三方编解码库补丁**：
    - 构建脚本仓库：<https://github.com/BtbN/FFmpeg-Builds>（该构建对应 2026-10-31 构建脚本与 `variants/win64-lgpl-shared.sh`、`scripts.d/` 配置）
    - 完整编译参数可在运行随包 `tools\ffmpeg\ffmpeg.exe -buildconf` 时实时查看（包含 `--enable-version3 --enable-shared --disable-static --disable-libx264 --disable-libx265` 等纯 LGPLv3 选项）。
-3. **本仓库获取与验证脚本**：
+3. **本仓库获取与验证脚本及对应源码索取说明（LGPLv3 §4）**：
    - 参见本仓库 `scripts/bundled-tools-windows.json` 与 `scripts/fetch-bundled-tools-windows.ps1`。
+   - 二进制安装包内随附完整 LGPL-3.0 原文与上述固定提交源码/构建脚本指引（不内嵌源码压缩包本体）；若上游源码链接不可访问，可通过 Media Fetcher 仓库 Issue 联系维护者获取对应版本源码。
 
 ## 3. LGPL 共享库替换与聚合调用说明
 

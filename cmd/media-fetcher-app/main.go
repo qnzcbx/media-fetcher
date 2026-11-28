@@ -17,7 +17,7 @@ func main() {
 
 	mygo.App.WhenReady(func() {
 		win := mygo.NewWindow(mygo.WindowOptions{
-			Title:           "Media Fetcher",
+			Title:           "MFetch",
 			Width:           960,
 			Height:          680,
 			MinWidth:        800,

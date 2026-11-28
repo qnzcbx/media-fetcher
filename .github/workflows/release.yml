@@ -39,6 +39,7 @@ jobs:
         run: |
           $meta = Get-Content -Raw mygo.json | ConvertFrom-Json
           $appName = [string]$meta.name
+          $appSlug = if ($meta.slug) { [string]$meta.slug } else { ($appName.ToLowerInvariant() -replace '[^a-z0-9]+', '-').Trim('-') }
           $appVersion = [string]$meta.version
           if ([string]::IsNullOrWhiteSpace($appName) -or $appVersion -notmatch '^\d+\.\d+\.\d+([-.][0-9A-Za-z.]+)?$') {
             throw "Invalid name or version in mygo.json: name='$appName', version='$appVersion'"
@@ -65,8 +66,9 @@ jobs:
             $hasExistingTag = if ($LASTEXITCODE -eq 0) { "true" } else { "false" }
           }
 
-          Write-Output "Verified release metadata: app=$appName version=$appVersion tag=$tag existing_tag=$hasExistingTag"
-          Add-Content -Path $env:GITHUB_OUTPUT -Value "app_name=$appName"
+          Write-Output "Verified release metadata: app=$appName slug=$appSlug version=$appVersion tag=$tag existing_tag=$hasExistingTag"
+          Add-Content -Path $env:GITHUB_OUTPUT -Value "app_name=$appSlug"
+          Add-Content -Path $env:GITHUB_OUTPUT -Value "app_display_name=$appName"
           Add-Content -Path $env:GITHUB_OUTPUT -Value "app_version=$appVersion"
           Add-Content -Path $env:GITHUB_OUTPUT -Value "release_tag=$tag"
           Add-Content -Path $env:GITHUB_OUTPUT -Value "has_existing_tag=$hasExistingTag"
@@ -149,11 +151,11 @@ jobs:
 
           if (-not $releaseExists) {
             $notes = @(
-              "Media Fetcher $env:RELEASE_TAG (Windows amd64 · Bundled Runtime)",
+              "MFetch (Media Fetcher) $env:RELEASE_TAG (Windows amd64 · Bundled Runtime)",
               "",
               "### Artifacts",
-              '- Windows NSIS installer (`*-setup-*-amd64.exe`, includes bundled runtime & WebView2 Evergreen detection)',
-              '- Windows portable archive (`*-windows-amd64-portable.zip`, includes full bundled runtime & licenses)',
+              '- Windows NSIS installer (`mfetch-setup-*-amd64.exe`, includes bundled runtime & WebView2 Evergreen detection)',
+              '- Windows portable archive (`mfetch-*-windows-amd64-portable.zip`, includes full bundled runtime & licenses)',
               '- `SHA256SUMS.txt` checksum file',
               '- `THIRD_PARTY_NOTICES.md`',
               "",
@@ -162,14 +164,14 @@ jobs:
               "- **Deno**: `v$($lock.components.deno.version)` (MIT; official Windows x64 build)",
               "- **FFmpeg / ffprobe**: `$($lock.components.ffmpeg.version)` (`BtbN/FFmpeg-Builds` LGPL-3.0-or-later shared)",
               "",
-              "> Note: Full third-party license texts and corresponding source archives are included in `licenses/` inside both the installer and portable ZIP. Windows binaries are currently unsigned."
+              "> Note: Full third-party license texts, dependency notices, and pinned corresponding source download instructions (with verified upstream URLs and SHA-256 checksums) are included in ``licenses/`` inside both the installer and portable ZIP (source tarballs are not embedded inside the binary package; corresponding source for GPL/LGPL components can also be obtained via project issue/request per GPLv3/LGPLv3 obligations). Windows binaries are currently unsigned."
             ) -join "`n"
 
             $createArgs = @(
               "release", "create", "$env:RELEASE_TAG",
               "--repo", "$env:GITHUB_REPOSITORY",
               "--draft",
-              "--title", "Media Fetcher $env:RELEASE_TAG",
+              "--title", "MFetch $env:RELEASE_TAG",
               "--notes", $notes
             )
             if ($env:HAS_EXISTING_TAG -eq "true") {

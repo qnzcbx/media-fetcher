@@ -40,7 +40,7 @@ const emit = defineEmits<{
       </button>
     </header>
 
-    <div class="settings-content">
+    <div class="settings-content themed-scrollbar">
       <section class="settings-section">
         <h3>外观</h3>
         <ThemeSelector
@@ -81,9 +81,6 @@ const emit = defineEmits<{
         <div class="toggle-row">
           <div class="toggle-copy">
             <span class="toggle-title">自动识别剪贴板链接</span>
-            <p class="toggle-desc">
-              仅在进入或返回首页且输入框为空时读取本地剪贴板，提取单个受支持链接填入输入框；不自动解析、不记录剪贴板原文。
-            </p>
           </div>
           <button
             type="button"
@@ -182,13 +179,6 @@ const emit = defineEmits<{
   font-size: 14px;
   font-weight: 500;
   color: var(--text-main);
-}
-
-.toggle-desc {
-  margin: 6px 0 0;
-  font-size: 12px;
-  line-height: 1.5;
-  color: var(--text-assist);
 }
 
 .toggle-switch {

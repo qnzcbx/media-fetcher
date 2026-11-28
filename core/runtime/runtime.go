@@ -208,28 +208,41 @@ func ResolveMediaTools(opts Options) (MediaTools, error) {
 		}
 	}
 
-	// 2. 系统 PATH（优先以 PATH 中 ffmpeg 同目录配对 ffprobe）
-	if p, err := exec.LookPath("ffmpeg"); err == nil {
-		dir := filepath.Dir(p)
-		sibling := filepath.Join(dir, fpName)
-		if isRegularFile(sibling) {
-			return MediaTools{
-				FFmpeg:  ResolvedTool{Kind: "ffmpeg", Path: p, Source: SourceSystem},
-				FFprobe: ResolvedTool{Kind: "ffprobe", Path: sibling, Source: SourceSystem},
-				Source:  SourceSystem,
-			}, nil
+	// 2. 系统 PATH（强制同目录配对 FFmpeg 与 ffprobe，拒绝跨目录混用不同版本）
+	var partialPathFFmpeg string
+	seenPathDirs := map[string]bool{}
+	for _, rawDir := range filepath.SplitList(os.Getenv("PATH")) {
+		dir := strings.TrimSpace(rawDir)
+		if dir == "" {
+			continue
 		}
-		if fp, fpErr := exec.LookPath("ffprobe"); fpErr == nil {
+		cleanDir := filepath.Clean(dir)
+		key := strings.ToLower(cleanDir)
+		if seenPathDirs[key] {
+			continue
+		}
+		seenPathDirs[key] = true
+		ff := filepath.Join(cleanDir, ffName)
+		fp := filepath.Join(cleanDir, fpName)
+		hasFF := isRegularFile(ff)
+		hasFP := isRegularFile(fp)
+		if hasFF && hasFP {
 			return MediaTools{
-				FFmpeg:  ResolvedTool{Kind: "ffmpeg", Path: p, Source: SourceSystem},
+				FFmpeg:  ResolvedTool{Kind: "ffmpeg", Path: ff, Source: SourceSystem},
 				FFprobe: ResolvedTool{Kind: "ffprobe", Path: fp, Source: SourceSystem},
 				Source:  SourceSystem,
 			}, nil
 		}
-		return MediaTools{}, fmt.Errorf("%w: 已在 PATH 找到 ffmpeg (%s)，但缺少配对的 ffprobe", ErrFFmpegNotFound, p)
+		if hasFF && !hasFP && partialPathFFmpeg == "" {
+			partialPathFFmpeg = ff
+		}
 	}
 
-	// 3. 常见 Windows 默认目录
+	if partialPathFFmpeg != "" {
+		return MediaTools{}, fmt.Errorf("%w: 已在 PATH 找到 ffmpeg (%s)，但同目录缺少配对的 %s（拒绝跨目录混用不同版本的 ffprobe）", ErrFFmpegNotFound, partialPathFFmpeg, fpName)
+	}
+
+	// 3. 常见 Windows 默认目录（同目录配对）
 	if runtime.GOOS == "windows" {
 		for _, dir := range []string{`C:\tool\ffmpeg\bin`, `C:\ffmpeg\bin`, `C:\Program Files\ffmpeg\bin`} {
 			ff := filepath.Join(dir, ffName)
@@ -278,6 +291,19 @@ func resolveExplicitMediaTools(expFFmpeg, expFFprobe string) (MediaTools, error)
 			return MediaTools{}, fmt.Errorf("%w: 已显式指定 ffprobe (%s)，但同目录缺少配对的 %s", ErrInvalidExplicitPath, fpPath, ffName)
 		}
 		ffPath = sibling
+	}
+
+	// 若同时显式指定了来自不同目录的 FFmpeg 与 ffprobe，核验两者主版本兼容性。
+	if expFFmpeg != "" && expFFprobe != "" && !strings.EqualFold(filepath.Clean(filepath.Dir(ffPath)), filepath.Clean(filepath.Dir(fpPath))) {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		ffLine, ffErr := runVersionLine(ctx, ffPath, "-version")
+		fpLine, fpErr := runVersionLine(ctx, fpPath, "-version")
+		if ffErr == nil && fpErr == nil {
+			if err := CheckMediaVersionCompatibility(parseFFmpegVersion(ffLine), parseFFmpegVersion(fpLine)); err != nil {
+				return MediaTools{}, fmt.Errorf("%w: %v", ErrInvalidExplicitPath, err)
+			}
+		}
 	}
 
 	return MediaTools{

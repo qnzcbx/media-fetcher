@@ -20,6 +20,7 @@ Add-Type -AssemblyName System.IO.Compression.FileSystem
 $Root = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $MygoCfg = Get-Content -Raw -LiteralPath (Join-Path $Root 'mygo.json') | ConvertFrom-Json
 $AppName = [string]$MygoCfg.name
+$AppSlug = if ($MygoCfg.slug) { [string]$MygoCfg.slug } else { ($AppName.ToLowerInvariant() -replace '[^a-z0-9]+', '-').Trim('-') }
 $AppVersion = [string]$MygoCfg.version
 if (-not $DistDir) { $DistDir = Join-Path $Root 'dist\windows-amd64' }
 
@@ -92,6 +93,9 @@ try {
   }
 
   # 3. Build Windows amd64 executable & NSIS installer via MyGo (runs frontend buildCommand)
+  # Clean stale build/windows-amd64 output so renamed executables cannot leak into the Portable ZIP.
+  $buildWin = Join-Path $Root 'build\windows-amd64'
+  if (Test-Path -LiteralPath $buildWin) { Remove-Item -Recurse -Force -LiteralPath $buildWin }
   Exec-Checked 'Step 3/6: MyGo Windows amd64 build (bundled NSIS installer)' {
     & pnpm exec mygo build -platform windows/amd64
   }
@@ -99,8 +103,7 @@ try {
   # 4. Assemble release distribution artifacts (NSIS installer + Portable ZIP)
   Write-Host ''
   Write-Host ">>> Step 4/6: Packaging Portable ZIP and assembling $DistDir"
-  $buildWin = Join-Path $Root 'build\windows-amd64'
-  $setupName = "$AppName-setup-$AppVersion-amd64.exe"
+  $setupName = "$AppSlug-setup-$AppVersion-amd64.exe"
   $setupPath = Join-Path $buildWin $setupName
   if (-not (Test-Path -LiteralPath $setupPath)) {
     throw "Expected NSIS installer not found: $setupPath"
@@ -114,7 +117,7 @@ try {
   Copy-Item -Force -LiteralPath (Join-Path $Root 'THIRD_PARTY_NOTICES.md') -Destination (Join-Path $DistDir 'THIRD_PARTY_NOTICES.md')
 
   $portableStageRoot = Join-Path $env:TEMP ('mf-portable-' + [Guid]::NewGuid().ToString('N').Substring(0, 8))
-  $portableInner = Join-Path $portableStageRoot "$AppName-$AppVersion-windows-amd64"
+  $portableInner = Join-Path $portableStageRoot "$AppSlug-$AppVersion-windows-amd64"
   New-Item -ItemType Directory -Force -Path $portableInner | Out-Null
   try {
     Get-ChildItem -LiteralPath $buildWin | Where-Object {
@@ -123,7 +126,7 @@ try {
       Copy-Item -Recurse -Force -LiteralPath $_.FullName -Destination (Join-Path $portableInner $_.Name)
     }
     Copy-Item -Force -LiteralPath (Join-Path $Root 'README.md') -Destination (Join-Path $portableInner 'README.md')
-    $portableName = "$AppName-$AppVersion-windows-amd64-portable.zip"
+    $portableName = "$AppSlug-$AppVersion-windows-amd64-portable.zip"
     $portablePath = Join-Path $DistDir $portableName
     [IO.Compression.ZipFile]::CreateFromDirectory($portableStageRoot, $portablePath, [IO.Compression.CompressionLevel]::Optimal, $false)
   } finally {

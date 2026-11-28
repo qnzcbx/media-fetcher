@@ -226,7 +226,7 @@ try {
         if (Test-Path $uninstKey) {
           Fail "Refusing -TestSilentInstall because $uninstKey already exists on this host"
         } else {
-          $instDir = Join-Path $Work '安装验收 测试目录\Media Fetcher'
+          $instDir = Join-Path $Work "安装验收 测试目录\$AppName"
           $p = Start-Process -FilePath $Installer -ArgumentList "/S /D=$instDir" -Wait -PassThru
           if ($p.ExitCode -ne 0) {
             Fail "Silent install failed (exit=$($p.ExitCode))"

@@ -90,7 +90,7 @@ const handleRemove = () => {
         </nav>
       </div>
 
-      <div class="list-container">
+      <div class="list-container themed-scrollbar">
         <p v-if="error" class="error-msg" role="alert">{{ error }}</p>
 
         <div class="list">
@@ -216,36 +216,10 @@ const handleRemove = () => {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  scrollbar-gutter: stable;
   box-sizing: border-box;
   width: 100%;
   padding-right: 4px;
   padding-bottom: 16px;
-}
-.list-container::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
-}
-.list-container::-webkit-scrollbar-button {
-  display: none;
-  width: 0;
-  height: 0;
-}
-.list-container::-webkit-scrollbar-track {
-  background: transparent;
-}
-.list-container::-webkit-scrollbar-thumb {
-  background: var(--scrollbar-thumb);
-  border-radius: 999px;
-}
-.list-container::-webkit-scrollbar-thumb:hover {
-  background: var(--scrollbar-thumb-hover);
-}
-.list-container::-webkit-scrollbar-thumb:active {
-  background: var(--scrollbar-thumb-active);
-}
-.list-container::-webkit-scrollbar-corner {
-  background: transparent;
 }
 .list {
   background: var(--card-bg);

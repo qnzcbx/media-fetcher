@@ -88,18 +88,12 @@ export const usePreferences = () => {
     preferences.value = {
       ...preferences.value,
       autoDetectClipboard,
-      clipboardNoticeDismissed: true,
     };
-  };
-
-  const dismissClipboardNotice = () => {
-    preferences.value = { ...preferences.value, clipboardNoticeDismissed: true };
   };
 
   return {
     setDownloadDirectory,
     setAutoDetectClipboard,
-    dismissClipboardNotice,
     preferences,
     resolvedTheme,
     setTheme,

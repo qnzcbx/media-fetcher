@@ -62,7 +62,10 @@ jobs:
           }
           Write-Output "Lockfile, GPG key, WebView2 NSIS hook, and licenses verified."
 
-      - name: Ensure FFmpeg and ffprobe are available for Go media tests
+      # Test boundary note: fast PR CI runs Go media tests against system FFmpeg (libx264/libmp3lame),
+      # whereas full release builds (release.yml / scripts/build-release-windows.ps1) run the exact same
+      # Go test suite against the pinned bundled BtbN LGPL Shared FFmpeg (libopenh264/libmp3lame).
+      - name: Ensure system FFmpeg and ffprobe are available for fast PR CI tests
         run: |
           if (-not (Get-Command ffmpeg -ErrorAction SilentlyContinue) -or -not (Get-Command ffprobe -ErrorAction SilentlyContinue)) {
             choco install ffmpeg --no-progress -y
@@ -116,9 +119,11 @@ jobs:
       - name: Verify MyGo outputs and bindings sync
         run: |
           $appMeta = Get-Content -Raw mygo.json | ConvertFrom-Json
+          $appName = [string]$appMeta.name
+          $appSlug = if ($appMeta.slug) { [string]$appMeta.slug } else { ($appName.ToLowerInvariant() -replace '[^a-z0-9]+', '-').Trim('-') }
           $version = [string]$appMeta.version
-          $exe = "build/windows-amd64/media-fetcher.exe"
-          $setup = "build/windows-amd64/media-fetcher-setup-$version-amd64.exe"
+          $exe = "build/windows-amd64/$appName.exe"
+          $setup = "build/windows-amd64/$appSlug-setup-$version-amd64.exe"
           $notices = "build/windows-amd64/THIRD_PARTY_NOTICES.md"
           foreach ($f in @($exe, $setup, $notices)) {
             if (-not (Test-Path $f) -or (Get-Item $f).Length -le 0) {
