@@ -3,6 +3,7 @@ import { ref, watch, computed } from "vue";
 import { formatFileSize, formatDuration } from "../../utils/fileMetadata";
 import { progressText } from "../../utils/downloadStatus";
 import { isSelectableCard } from "../../composables/useGallerySelection";
+import { useActionMenu } from "../../composables/useActionMenu";
 import { Image, Play, Music, Ellipsis, Check } from "@lucide/vue";
 import { downloadAPI } from "../../api/download";
 import type { GalleryCard } from "../../composables/useDownloads";
@@ -22,8 +23,23 @@ const emit = defineEmits<{
 }>();
 
 const thumbnail = ref("");
-const menu = ref(false);
 const imageFailed = ref(false);
+const rowRef = ref<HTMLElement | null>(null);
+const moreBtnRef = ref<HTMLElement | null>(null);
+const menuRef = ref<HTMLElement | null>(null);
+
+const { isOpen: menu, close: closeMenu, toggle: toggleMenu } = useActionMenu({
+  menuRef,
+  triggerRef: moreBtnRef,
+  contextRootRef: rowRef,
+});
+
+watch(
+  () => props.isSelectionMode,
+  (selecting) => {
+    if (selecting) closeMenu();
+  },
+);
 watch(
   () => [thumbnail.value, props.card.preview],
   () => {
@@ -51,7 +67,7 @@ watch(
 );
 
 const pick = (action: string) => {
-  menu.value = false;
+  closeMenu();
   emit("action", props.card, action);
 };
 
@@ -101,13 +117,14 @@ const metadata = computed(() => {
 
 <template>
   <div
+    ref="rowRef"
     @mouseenter="recoverDuration"
     @focusin="recoverDuration"
     class="list-item"
     @click="handleItemClick"
     :class="{ selectable: isSelectionMode, selected: isSelected }"
-    @contextmenu.prevent="!isSelectionMode && (menu = !menu)"
-    @keydown.esc="menu = false"
+    @contextmenu.prevent="!isSelectionMode && toggleMenu()"
+    @keydown.esc="closeMenu"
   >
     <div
       v-if="isSelectionMode"
@@ -156,10 +173,10 @@ const metadata = computed(() => {
     </div>
 
     <div class="actions-area" v-if="!isSelectionMode">
-      <button class="more-btn" aria-label="操作" :aria-expanded="menu" @click.stop="menu = !menu">
+      <button ref="moreBtnRef" class="more-btn" aria-label="操作" :aria-expanded="menu" @click.stop="toggleMenu">
         <Ellipsis :size="18" />
       </button>
-      <div v-if="menu" class="dropdown-menu">
+      <div v-if="menu" ref="menuRef" class="dropdown-menu">
         <template v-if="card.status === 'done'">
           <button :disabled="card.fileState === 'missing' || card.fileState === 'unavailable'" @click.stop="pick('file')">打开文件</button>
           <button @click.stop="pick('folder')">打开目录</button>
@@ -178,7 +195,7 @@ const metadata = computed(() => {
           v-else
           :disabled="card.status === 'cancelling'"
           @click.stop="
-            menu = false;
+            closeMenu();
             emit('cancel');
           "
         >

@@ -4,6 +4,7 @@ import { ChevronLeft } from "@lucide/vue";
 import type { GalleryCard } from "../composables/useDownloads";
 import DownloadListItem from "../components/download/DownloadListItem.vue";
 import GallerySelectionBar from "../components/download/GallerySelectionBar.vue";
+import { closeActiveActionMenu } from "../composables/useActionMenu";
 import { selectableCount, useGallerySelection } from "../composables/useGallerySelection";
 
 const props = defineProps<{ cards: GalleryCard[]; busy: boolean; error: string }>();
@@ -41,6 +42,7 @@ watch(() => props.cards.map(card => card.id), (ids) => {
   for (const id of selectedIds.value) if (!ids.includes(id)) selectedIds.value.delete(id);
 });
 watch(filter, () => {
+  closeActiveActionMenu();
   exitSelectionMode();
 });
 
@@ -214,8 +216,36 @@ const handleRemove = () => {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
+  scrollbar-gutter: stable;
+  box-sizing: border-box;
   width: 100%;
+  padding-right: 4px;
   padding-bottom: 16px;
+}
+.list-container::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+.list-container::-webkit-scrollbar-button {
+  display: none;
+  width: 0;
+  height: 0;
+}
+.list-container::-webkit-scrollbar-track {
+  background: transparent;
+}
+.list-container::-webkit-scrollbar-thumb {
+  background: var(--scrollbar-thumb);
+  border-radius: 999px;
+}
+.list-container::-webkit-scrollbar-thumb:hover {
+  background: var(--scrollbar-thumb-hover);
+}
+.list-container::-webkit-scrollbar-thumb:active {
+  background: var(--scrollbar-thumb-active);
+}
+.list-container::-webkit-scrollbar-corner {
+  background: transparent;
 }
 .list {
   background: var(--card-bg);

@@ -40,7 +40,7 @@ const onPaste = async () => {
 
 <template>
   <form class="search-box" @submit.prevent="$emit('submit')">
-    <input v-model="localUrl" type="text" placeholder="你的链接" required />
+    <input v-model="localUrl" type="text" placeholder="你的链接" :disabled="isParsing" required />
     <div class="icon-btn-box">
       <button
         v-if="localUrl"

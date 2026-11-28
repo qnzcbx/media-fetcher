@@ -1,15 +1,27 @@
 <script setup lang="ts">
-import { ref, watch } from "vue";
+import { computed, ref, watch } from "vue";
 import { Image, Play, Music, Ellipsis } from "@lucide/vue";
 import { downloadAPI } from "../../api/download";
 import type { GalleryCard } from "../../composables/useDownloads";
+import { useActionMenu } from "../../composables/useActionMenu";
 import DownloadProgressOverlay from "./DownloadProgressOverlay.vue";
 
 const props = defineProps<{ card: GalleryCard; busy: boolean; hideMore?: boolean }>();
 const emit = defineEmits<{ action: [card: GalleryCard, action: string]; cancel: [] }>();
 const thumbnail = ref("");
-const menu = ref(false);
 const imageFailed = ref(false);
+const rootRef = ref<HTMLElement | null>(null);
+const coverRef = ref<HTMLElement | null>(null);
+const moreBtnRef = ref<HTMLElement | null>(null);
+const menuRef = ref<HTMLElement | null>(null);
+const coverTriggerRef = computed(() => (props.card.status === "done" ? null : coverRef.value));
+
+const { isOpen: menu, close: closeMenu, toggle: toggleMenu } = useActionMenu({
+  menuRef,
+  triggerRef: moreBtnRef,
+  extraTriggerRef: coverTriggerRef,
+  contextRootRef: rootRef,
+});
 watch(
   () => [thumbnail.value, props.card.preview],
   () => {
@@ -37,18 +49,19 @@ watch(
 );
 
 const pick = (action: string) => {
-  menu.value = false;
+  closeMenu();
   emit("action", props.card, action);
 };
 </script>
 
 <template>
-  <article class="tile" @contextmenu.prevent="menu = !menu" @keydown.esc="menu = false">
+  <article ref="rootRef" class="tile" @contextmenu.prevent="toggleMenu" @keydown.esc="closeMenu">
     <button
+      ref="coverRef"
       class="cover"
       :title="card.title"
       :aria-label="card.title || '下载资源'"
-      @click="card.status === 'done' ? pick('source') : (menu = !menu)"
+      @click="card.status === 'done' ? pick('source') : toggleMenu()"
     >
       <img
         v-if="!imageFailed && (thumbnail || card.preview?.startsWith('data:image/'))"
@@ -70,10 +83,10 @@ const pick = (action: string) => {
       <span v-if="card.fileState === 'missing' || card.fileState === 'unavailable'" class="file-warning">{{ card.fileState === "missing" ? "文件不存在" : "文件不可用" }}</span>
       <Transition name="fade"><DownloadProgressOverlay :card="card" /></Transition>
     </button>
-    <button v-if="!hideMore" class="more" aria-label="下载操作" :aria-expanded="menu" @click="menu = !menu">
+    <button v-if="!hideMore" ref="moreBtnRef" class="more" aria-label="下载操作" :aria-expanded="menu" @click.stop="toggleMenu">
       <Ellipsis :size="16" />
     </button>
-    <div v-if="menu" class="actions">
+    <div v-if="menu" ref="menuRef" class="actions">
       <template v-if="card.status === 'done'">
         <button :disabled="card.fileState === 'missing' || card.fileState === 'unavailable'" @click="pick('file')">打开文件</button>
         <button @click="pick('folder')">打开目录</button>
@@ -89,7 +102,7 @@ const pick = (action: string) => {
         v-else
         :disabled="card.status === 'cancelling'"
         @click="
-          menu = false;
+          closeMenu();
           emit('cancel');
         "
       >

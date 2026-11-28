@@ -1,9 +1,10 @@
 <script setup lang="ts">
 import RecycleConfirmation from "./components/download/RecycleConfirmation.vue";
-import { ref, computed } from "vue";
+import { ref, computed, watch } from "vue";
 import AppHeader from "./components/home/AppHeader.vue";
 import BrandWordmark from "./components/home/BrandWordmark.vue";
 import LinkInput from "./components/home/LinkInput.vue";
+import MediaParsingOverlay from "./components/home/MediaParsingOverlay.vue";
 import SupportedSites from "./components/home/SupportedSites.vue";
 import ResourcePicker from "./components/media/ResourcePicker.vue";
 import CredentialModal from "./components/credential/CredentialModal.vue";
@@ -20,6 +21,7 @@ import { useMediaPreview } from "./composables/useMediaPreview";
 import { useMediaSelection } from "./composables/useMediaSelection";
 import { useDownloads } from "./composables/useDownloads";
 import { usePreferences } from "./composables/usePreferences";
+import { closeActiveActionMenu } from "./composables/useActionMenu";
 import { getUniqueVideoStreams } from "./utils/media";
 
 // Composables
@@ -74,6 +76,15 @@ const { preferences, setTheme, setDefaultAudioFormat, setDownloadDirectory } = u
 const currentView = ref<"home" | "downloads">("home");
 const drawerOpen = ref(false);
 const settingsOpen = ref(false);
+const parsingSiteId = ref("");
+const isHomeParsing = computed(
+  () => currentView.value === "home" && !mediaInfo.value && (isPreparing.value || isParsing.value),
+);
+
+// 切换页面、打开抽屉或弹窗时统一收起已展开的更多操作菜单。
+watch([currentView, drawerOpen, settingsOpen, showAuthManage, mediaInfo], () => {
+  closeActiveActionMenu();
+});
 
 const logoutTarget = ref<SafeAccount>();
 const logoutBusy = ref(false);
@@ -127,6 +138,8 @@ const handleParse = async () => {
     return;
   }
 
+  closeActiveActionMenu();
+  parsingSiteId.value = target.siteId;
   isPreparing.value = true;
   try {
     const ready = await ensureInitialized();
@@ -143,6 +156,7 @@ const handleParse = async () => {
     }
   } finally {
     isPreparing.value = false;
+    parsingSiteId.value = "";
   }
 };
 
@@ -264,6 +278,7 @@ const handleUnlock = () => {
           @openView="currentView = 'downloads'; refreshFileStates()"
         />
       </main>
+      <MediaParsingOverlay :active="isHomeParsing" :siteId="parsingSiteId" />
     </template>
 
     <Transition name="fade-view">

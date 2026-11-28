@@ -27,6 +27,14 @@
   --overlay-bg: rgba(0, 0, 0, 0.4);
   --shadow-color: rgba(0, 0, 0, 0.1);
   --focus-ring: #8ed7eb;
+  --scrollbar-thumb: rgba(32, 36, 39, 0.18);
+  --scrollbar-thumb-hover: rgba(32, 36, 39, 0.34);
+  --scrollbar-thumb-active: rgba(32, 36, 39, 0.48);
+  --parsing-overlay-bg: rgba(21, 25, 34, 0.46);
+  --parsing-spinner-track: rgba(255, 255, 255, 0.28);
+  --parsing-spinner-head: #ffffff;
+  --parsing-text: #ffffff;
+  --parsing-subtext: rgba(255, 255, 255, 0.84);
 
   --danger: #e53e3e;
   --danger-bg: #fff5f5;
@@ -59,6 +67,14 @@
   --overlay-bg: rgba(0, 0, 0, 0.58);
   --shadow-color: rgba(0, 0, 0, 0.45);
   --focus-ring: #8ed7eb;
+  --scrollbar-thumb: rgba(232, 236, 239, 0.2);
+  --scrollbar-thumb-hover: rgba(232, 236, 239, 0.36);
+  --scrollbar-thumb-active: rgba(232, 236, 239, 0.52);
+  --parsing-overlay-bg: rgba(12, 15, 20, 0.64);
+  --parsing-spinner-track: rgba(255, 255, 255, 0.22);
+  --parsing-spinner-head: #ffffff;
+  --parsing-text: #f3f6f8;
+  --parsing-subtext: rgba(232, 236, 239, 0.78);
 
   --danger: #f87171;
   --danger-bg: #3a2424;
