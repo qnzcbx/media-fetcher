@@ -1,0 +1,254 @@
+name: Release (Windows amd64)
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Version tag to verify/publish (e.g. v1.0.0; defaults to v<mygo.json version>)"
+        required: false
+        type: string
+        default: ""
+      create_draft_release:
+        description: "Create or update a draft GitHub Release for manual review"
+        required: false
+        type: boolean
+        default: true
+
+permissions:
+  contents: write
+
+jobs:
+  release-windows-amd64:
+    name: Build & Draft Release (Windows amd64)
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: pwsh
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Verify Git Tag matches mygo.json version
+        id: meta
+        run: |
+          $meta = Get-Content -Raw mygo.json | ConvertFrom-Json
+          $appName = [string]$meta.name
+          $appVersion = [string]$meta.version
+          if ([string]::IsNullOrWhiteSpace($appName) -or $appVersion -notmatch '^\d+\.\d+\.\d+([-.][0-9A-Za-z.]+)?$') {
+            throw "Invalid name or version in mygo.json: name='$appName', version='$appVersion'"
+          }
+          $expectedTag = "v$appVersion"
+
+          if ("${{ github.event_name }}" -eq "push") {
+            $tag = "${{ github.ref_name }}"
+            if ($tag -ne $expectedTag) {
+              throw "Git tag '$tag' does not match mygo.json version '$appVersion' (expected '$expectedTag')"
+            }
+            $hasExistingTag = "true"
+          } else {
+            $inputTag = "${{ inputs.tag }}".Trim()
+            if ($inputTag -ne "") {
+              if ($inputTag -ne $expectedTag) {
+                throw "Input tag '$inputTag' does not match mygo.json version '$appVersion' (expected '$expectedTag')"
+              }
+              $tag = $inputTag
+            } else {
+              $tag = $expectedTag
+            }
+            git rev-parse --verify --quiet "refs/tags/$tag" | Out-Null
+            $hasExistingTag = if ($LASTEXITCODE -eq 0) { "true" } else { "false" }
+          }
+
+          Write-Output "Verified release metadata: app=$appName version=$appVersion tag=$tag existing_tag=$hasExistingTag"
+          Add-Content -Path $env:GITHUB_OUTPUT -Value "app_name=$appName"
+          Add-Content -Path $env:GITHUB_OUTPUT -Value "app_version=$appVersion"
+          Add-Content -Path $env:GITHUB_OUTPUT -Value "release_tag=$tag"
+          Add-Content -Path $env:GITHUB_OUTPUT -Value "has_existing_tag=$hasExistingTag"
+
+      - name: Setup Go from go.mod
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 11
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: pnpm
+
+      - name: Ensure FFmpeg and ffprobe are available
+        run: |
+          if (-not (Get-Command ffmpeg -ErrorAction SilentlyContinue) -or -not (Get-Command ffprobe -ErrorAction SilentlyContinue)) {
+            choco install ffmpeg --no-progress -y
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            $chocoBin = "C:\ProgramData\chocolatey\bin"
+            if (Test-Path $chocoBin) {
+              $env:PATH = "$chocoBin;$env:PATH"
+              Add-Content -Path $env:GITHUB_PATH -Value $chocoBin
+            }
+          }
+          ffmpeg -version | Select-Object -First 2
+          if ($LASTEXITCODE -ne 0) { throw "ffmpeg is not executable" }
+          ffprobe -version | Select-Object -First 2
+          if ($LASTEXITCODE -ne 0) { throw "ffprobe is not executable" }
+
+      - name: Install frontend dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Run Go core and desktop tests (isolated AppData)
+        env:
+          APPDATA: ${{ runner.temp }}\release-appdata
+          LOCALAPPDATA: ${{ runner.temp }}\release-localappdata
+        run: |
+          New-Item -ItemType Directory -Path $env:APPDATA, $env:LOCALAPPDATA -Force | Out-Null
+          go test -count=1 ./core/... ./internal/... ./pkg/... ./test/...
+
+      - name: Run frontend YouTube contract tests
+        run: pnpm run test:youtube
+
+      - name: Run frontend downloads contract tests
+        run: pnpm run test:downloads
+
+      - name: Run frontend credentials contract tests
+        run: pnpm run test:credentials
+
+      - name: Run frontend preferences contract tests
+        run: pnpm run test:preferences
+
+      - name: Typecheck and build frontend
+        run: pnpm run build
+
+      - name: Build Windows amd64 executable and installer via MyGo
+        run: pnpm exec mygo build -platform windows/amd64
+
+      - name: Verify MyGo bindings sync
+        run: git diff --exit-code -- frontend/src/mygo.ts
+
+      - name: Package portable ZIP, verify third-party boundary and generate SHA256SUMS.txt
+        env:
+          APP_NAME: ${{ steps.meta.outputs.app_name }}
+          APP_VERSION: ${{ steps.meta.outputs.app_version }}
+        run: |
+          $buildDir = "build/windows-amd64"
+          $exePath = Join-Path $buildDir "$env:APP_NAME.exe"
+          $setupName = "$env:APP_NAME-setup-$env:APP_VERSION-amd64.exe"
+          $setupPath = Join-Path $buildDir $setupName
+          $noticesPath = Join-Path $buildDir "THIRD_PARTY_NOTICES.md"
+
+          foreach ($p in @($exePath, $setupPath, $noticesPath)) {
+            if (-not (Test-Path $p) -or (Get-Item $p).Length -le 0) {
+              throw "Expected MyGo output missing or empty: $p"
+            }
+          }
+
+          # 防御检查：严禁意外夹带第三方外部二进制（yt-dlp / ffmpeg / ffprobe / node / qjs / deno）
+          $forbidden = @("yt-dlp.exe", "ffmpeg.exe", "ffprobe.exe", "qjs.exe", "node.exe", "deno.exe")
+          $foundForbidden = Get-ChildItem $buildDir -Recurse -File | Where-Object { $forbidden -contains $_.Name.ToLowerInvariant() }
+          if ($foundForbidden) {
+            throw "Refusing to package unauthorized third-party binaries: $($foundForbidden.Name -join ', ')"
+          }
+
+          $distDir = Join-Path $env:RUNNER_TEMP "release-dist"
+          $stageDir = Join-Path $env:RUNNER_TEMP "portable-stage"
+          if (Test-Path $distDir) { Remove-Item $distDir -Recurse -Force }
+          if (Test-Path $stageDir) { Remove-Item $stageDir -Recurse -Force }
+          New-Item -ItemType Directory -Path $distDir, $stageDir -Force | Out-Null
+
+          # 1. 复制 NSIS 安装包与第三方声明（若有 LICENSE 一并保留）
+          Copy-Item $setupPath (Join-Path $distDir $setupName)
+          Copy-Item "THIRD_PARTY_NOTICES.md" (Join-Path $distDir "THIRD_PARTY_NOTICES.md")
+          if (Test-Path "LICENSE") {
+            Copy-Item "LICENSE" (Join-Path $distDir "LICENSE")
+          }
+
+          # 2. 组装便携版 ZIP（保留可执行文件、README 及第三方声明/许可证）
+          Copy-Item $exePath (Join-Path $stageDir "$env:APP_NAME.exe")
+          Copy-Item "THIRD_PARTY_NOTICES.md" (Join-Path $stageDir "THIRD_PARTY_NOTICES.md")
+          Copy-Item "README.md" (Join-Path $stageDir "README.md")
+          if (Test-Path "LICENSE") {
+            Copy-Item "LICENSE" (Join-Path $stageDir "LICENSE")
+          }
+          $portableName = "$env:APP_NAME-$env:APP_VERSION-windows-amd64-portable.zip"
+          $portablePath = Join-Path $distDir $portableName
+          Compress-Archive -Path (Join-Path $stageDir "*") -DestinationPath $portablePath -CompressionLevel Optimal
+
+          # 3. 生成 SHA256SUMS.txt（标准小写 hex + 双空格 + 文件名，UTF-8 无 BOM + LF）
+          $hashTargets = Get-ChildItem $distDir -File | Where-Object { $_.Name -ne "SHA256SUMS.txt" } | Sort-Object Name
+          $lines = foreach ($file in $hashTargets) {
+            $hash = (Get-FileHash $file.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+            "$hash  $($file.Name)"
+          }
+          $sumsPath = Join-Path $distDir "SHA256SUMS.txt"
+          [System.IO.File]::WriteAllText($sumsPath, (($lines -join "`n") + "`n"), [System.Text.UTF8Encoding]::new($false))
+
+          Write-Output "=== Release Dist Artifacts ==="
+          Get-ChildItem $distDir | Format-Table Name, Length -AutoSize
+          Write-Output "=== SHA256SUMS.txt ==="
+          Get-Content $sumsPath
+
+      - name: Upload build artifacts to workflow run
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.meta.outputs.app_name }}-${{ steps.meta.outputs.app_version }}-windows-amd64
+          path: ${{ runner.temp }}/release-dist/*
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Create or update draft GitHub Release
+        if: github.event_name == 'push' || inputs.create_draft_release == true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ steps.meta.outputs.release_tag }}
+          HAS_EXISTING_TAG: ${{ steps.meta.outputs.has_existing_tag }}
+          DIST_DIR: ${{ runner.temp }}\release-dist
+        run: |
+          $releaseExists = $false
+          gh release view "$env:RELEASE_TAG" --repo "$env:GITHUB_REPOSITORY" *> $null
+          if ($LASTEXITCODE -eq 0) {
+            $releaseExists = $true
+          }
+
+          if (-not $releaseExists) {
+            $notes = @(
+              "Media Fetcher $env:RELEASE_TAG (Windows amd64)",
+              "",
+              "### Artifacts",
+              '- Windows NSIS installer (`*-setup-*-amd64.exe`)',
+              '- Windows portable archive (`*-windows-amd64-portable.zip`)',
+              '- `SHA256SUMS.txt` checksum file',
+              '- `THIRD_PARTY_NOTICES.md`',
+              "",
+              "> Note: FFmpeg/ffprobe, yt-dlp, and a compatible JS runtime (Node.js >= 22 / Deno >= 2.3 / QuickJS-NG >= 0.12) are external components and are not bundled in this release. Windows binaries are currently unsigned."
+            ) -join "`n"
+
+            $createArgs = @(
+              "release", "create", "$env:RELEASE_TAG",
+              "--repo", "$env:GITHUB_REPOSITORY",
+              "--draft",
+              "--title", "Media Fetcher $env:RELEASE_TAG",
+              "--notes", $notes
+            )
+            if ($env:HAS_EXISTING_TAG -eq "true") {
+              $createArgs += "--verify-tag"
+            } else {
+              $createArgs += @("--target", "$env:GITHUB_SHA")
+            }
+            & gh @createArgs
+            if ($LASTEXITCODE -ne 0) { throw "Failed to create draft release $env:RELEASE_TAG" }
+          }
+
+          $assets = Get-ChildItem $env:DIST_DIR -File | Select-Object -ExpandProperty FullName
+          & gh release upload "$env:RELEASE_TAG" @assets --repo "$env:GITHUB_REPOSITORY" --clobber
+          if ($LASTEXITCODE -ne 0) { throw "Failed to upload release assets" }
